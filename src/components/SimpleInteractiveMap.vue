@@ -113,6 +113,13 @@ import { isCloudConfigured } from '../supabase.js'
 
 export default {
   name: 'SimpleInteractiveMap',
+  props: {
+    user: {
+      type: Object,
+      default: null
+    }
+  },
+  emits: ['update-events'],
   data() {
     return {
       map: null,
@@ -218,13 +225,27 @@ export default {
         })
           .addTo(this.map)
           .bindPopup(`
-            <div style="min-width: 200px; padding: 4px;">
-              <h4 style="margin: 0 0 8px 0; font-size: 16px; font-weight: 600; color: #1e2022;">${event.title}</h4>
-              <p style="margin: 0 0 8px 0; font-size: 14px; color: #8a919f; line-height: 1.5;">${event.description}</p>
-              <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #f1f1f2;">
-                <span style="font-size: 12px; color: #8a919f;">${this.formatDate(event.timestamp)}</span>
-              </div>
-            </div>
+                  <div style="min-width: 220px; padding: 8px;">
+                    <h4 style="margin: 0 0 8px 0; font-size: 16px; font-weight: 600; color: #1e2022;">${event.title}</h4>
+                    <p style="margin: 0 0 8px 0; font-size: 14px; color: #8a919f; line-height: 1.5;">${event.description}</p>
+                    ${event.user ? `
+                      <div style="margin-bottom: 8px; padding: 4px 0; border-bottom: 1px solid #f1f1f2;">
+                        <div style="display: flex; align-items: center; gap: 6px;">
+                          <div style="width: 24px; height: 24px; border-radius: 50%; background: #f1f1f2; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: bold;">
+                            ${(event.user.display_name || event.user.email).charAt(0).toUpperCase()}
+                          </div>
+                          <span style="font-size: 12px; color: #667eea; font-weight: 500;">
+                            ${event.user.display_name || event.user.email}
+                          </span>
+                        </div>
+                      </div>
+                    ` : ''}
+                    <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #f1f1f2;">
+                      <span style="font-size: 12px; color: #8a919f;">
+                        🕒 ${this.formatDate(event.created_at)}
+                      </span>
+                    </div>
+                  </div>
           `)
         
         this.markers.push({ id: event.id, marker })
@@ -266,6 +287,12 @@ export default {
         return
       }
       
+      // 检查用户是否登录
+      if (!this.user) {
+        alert('请先登录后再添加故事')
+        return
+      }
+      
       const event = {
         title: this.newEvent.title,
         description: this.newEvent.description,
@@ -274,7 +301,7 @@ export default {
           lat: this.selectedLocation.lat,
           lng: this.selectedLocation.lng
         },
-        timestamp: new Date().toISOString()
+        user_id: this.user.id
       }
       
       const savedEvent = await dbService.addEvent(event)
@@ -284,21 +311,33 @@ export default {
       }
       
       this.events.unshift(savedEvent)
+      this.$emit('update-events', this.events)
       
-      if (this.is3DView) {
-        // Cesium组件会自动响应事件变化
-        console.log('在3D地球中添加事件标记')
-      } else if (this.map) {
+      if (this.map) {
         const marker = L.marker([savedEvent.location.lat, savedEvent.location.lng], {
           icon: this.createCustomIcon(savedEvent.type)
         })
           .addTo(this.map)
           .bindPopup(`
-            <div style="min-width: 200px; padding: 4px;">
+            <div style="min-width: 220px; padding: 8px;">
               <h4 style="margin: 0 0 8px 0; font-size: 16px; font-weight: 600; color: #1e2022;">${savedEvent.title}</h4>
               <p style="margin: 0 0 8px 0; font-size: 14px; color: #8a919f; line-height: 1.5;">${savedEvent.description}</p>
+              ${savedEvent.user ? `
+                <div style="margin-bottom: 8px; padding: 4px 0; border-bottom: 1px solid #f1f1f2;">
+                  <div style="display: flex; align-items: center; gap: 6px;">
+                    <div style="width: 24px; height: 24px; border-radius: 50%; background: #f1f1f2; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: bold;">
+                      ${(savedEvent.user.display_name || savedEvent.user.email).charAt(0).toUpperCase()}
+                    </div>
+                    <span style="font-size: 12px; color: #667eea; font-weight: 500;">
+                      ${savedEvent.user.display_name || savedEvent.user.email}
+                    </span>
+                  </div>
+                </div>
+              ` : ''}
               <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #f1f1f2;">
-                <span style="font-size: 12px; color: #8a919f;">${this.formatDate(savedEvent.timestamp)}</span>
+                <span style="font-size: 12px; color: #8a919f;">
+                  🕒 ${this.formatDate(savedEvent.created_at)}
+                </span>
               </div>
             </div>
           `)
@@ -554,6 +593,7 @@ export default {
       try {
         if (isCloudConfigured) {
           this.events = await dbService.getAllEvents()
+          console.log('加载的事件数据:', this.events)
           
           if (this.map) {
             this.events.forEach(event => {
@@ -562,11 +602,28 @@ export default {
               })
                 .addTo(this.map)
                 .bindPopup(`
-                  <div style="min-width: 200px; padding: 4px;">
+                  <div style="min-width: 220px; padding: 8px;">
                     <h4 style="margin: 0 0 8px 0; font-size: 16px; font-weight: 600; color: #1e2022;">${event.title}</h4>
                     <p style="margin: 0 0 8px 0; font-size: 14px; color: #8a919f; line-height: 1.5;">${event.description}</p>
+                    ${event.user ? `
+                      <div style="margin-bottom: 8px; padding: 4px 0; border-bottom: 1px solid #f1f1f2;">
+                        <div style="display: flex; align-items: center; gap: 6px;">
+                          <div style="width: 24px; height: 24px; border-radius: 50%; background: #f1f1f2; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: bold;">
+                            ${(event.user.display_name || event.user.email).charAt(0).toUpperCase()}
+                          </div>
+                          <span style="font-size: 12px; color: #667eea; font-weight: 500;">
+                            ${event.user.display_name || event.user.email}
+                          </span>
+                        </div>
+                      </div>
+                    ` : ''}
                     <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #f1f1f2;">
-                      <span style="font-size: 12px; color: #8a919f;">${this.formatDate(event.timestamp)}</span>
+                      <span style="font-size: 12px; color: #8a919f;">
+                        🕒 ${this.formatDate(event.created_at)}
+                      </span>
+                      <span style="font-size: 12px; color: #8a919f; margin-left: 8px;">
+                        📍 ${event.location.lat.toFixed(3)}, ${event.location.lng.toFixed(3)}
+                      </span>
                     </div>
                   </div>
                 `)
@@ -615,13 +672,27 @@ export default {
         })
           .addTo(this.map)
           .bindPopup(`
-            <div style="min-width: 200px; padding: 4px;">
-              <h4 style="margin: 0 0 8px 0; font-size: 16px; font-weight: 600; color: #1e2022;">${event.title}</h4>
-              <p style="margin: 0 0 8px 0; font-size: 14px; color: #8a919f; line-height: 1.5;">${event.description}</p>
-              <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #f1f1f2;">
-                <span style="font-size: 12px; color: #8a919f;">${this.formatDate(event.timestamp)}</span>
-              </div>
-            </div>
+                  <div style="min-width: 220px; padding: 8px;">
+                    <h4 style="margin: 0 0 8px 0; font-size: 16px; font-weight: 600; color: #1e2022;">${event.title}</h4>
+                    <p style="margin: 0 0 8px 0; font-size: 14px; color: #8a919f; line-height: 1.5;">${event.description}</p>
+                    ${event.user ? `
+                      <div style="margin-bottom: 8px; padding: 4px 0; border-bottom: 1px solid #f1f1f2;">
+                        <div style="display: flex; align-items: center; gap: 6px;">
+                          <div style="width: 24px; height: 24px; border-radius: 50%; background: #f1f1f2; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: bold;">
+                            ${(event.user.display_name || event.user.email).charAt(0).toUpperCase()}
+                          </div>
+                          <span style="font-size: 12px; color: #667eea; font-weight: 500;">
+                            ${event.user.display_name || event.user.email}
+                          </span>
+                        </div>
+                      </div>
+                    ` : ''}
+                    <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #f1f1f2;">
+                      <span style="font-size: 12px; color: #8a919f;">
+                        🕒 ${this.formatDate(event.created_at)}
+                      </span>
+                    </div>
+                  </div>
           `)
         
         this.markers.push({ id: event.id, marker })
@@ -637,11 +708,25 @@ export default {
           const markerObj = this.markers.find(m => m.id === newRecord.id)
           if (markerObj) {
             markerObj.marker.setPopupContent(`
-              <div style="min-width: 200px; padding: 4px;">
+              <div style="min-width: 220px; padding: 8px;">
                 <h4 style="margin: 0 0 8px 0; font-size: 16px; font-weight: 600; color: #1e2022;">${newRecord.title}</h4>
                 <p style="margin: 0 0 8px 0; font-size: 14px; color: #8a919f; line-height: 1.5;">${newRecord.description}</p>
+                ${newRecord.user ? `
+                  <div style="margin-bottom: 8px; padding: 4px 0; border-bottom: 1px solid #f1f1f2;">
+                    <div style="display: flex; align-items: center; gap: 6px;">
+                      <div style="width: 24px; height: 24px; border-radius: 50%; background: #f1f1f2; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: bold;">
+                        ${(newRecord.user.display_name || newRecord.user.email).charAt(0).toUpperCase()}
+                      </div>
+                      <span style="font-size: 12px; color: #667eea; font-weight: 500;">
+                        ${newRecord.user.display_name || newRecord.user.email}
+                      </span>
+                    </div>
+                  </div>
+                ` : ''}
                 <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #f1f1f2;">
-                  <span style="font-size: 12px; color: #8a919f;">${this.formatDate(newRecord.timestamp)}</span>
+                  <span style="font-size: 12px; color: #8a919f;">
+                    🕒 ${this.formatDate(newRecord.created_at)}
+                  </span>
                 </div>
               </div>
             `)
@@ -680,13 +765,14 @@ export default {
 
 <style scoped>
 .map-container {
-  position: fixed;
+  position: absolute;
   top: 0;
   left: 0;
   right: 0;
   bottom: 0;
   width: 100%;
   height: 100%;
+  z-index: 1;
 }
 
 .map {
