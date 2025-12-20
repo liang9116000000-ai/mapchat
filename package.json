@@ -11,8 +11,15 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.33.1",
+    "cesium": "^1.136.0",
+    "dotenv": "^16.0.0",
     "leaflet": "^1.9.4",
+    "mars3d": "^3.10.10",
+    "mars3d-cesium": "^1.136.0",
+    "three": "^0.160.0",
     "vue": "^3.5.25",
+    "vue-router": "^4.2.5",
+    "vuex": "^4.1.0",
     "ws": "^8.14.2"
   },
   "devDependencies": {

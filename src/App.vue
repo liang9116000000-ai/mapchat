@@ -6,8 +6,6 @@
           <h1>📍 我们的故事</h1>
           <p>点击地图任意位置添加故事记录</p>
         </div>
-        <div class="header-right">
-        </div>
       </div>
     </header>
     
@@ -68,12 +66,7 @@ export default {
   font-weight: 400;
 }
 
-.header-right {
-  display: flex;
-  align-items: center;
-  z-index: 1000;
-  position: relative;
-}
+
 
 .main {
   flex: 1;

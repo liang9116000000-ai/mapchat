@@ -48,8 +48,6 @@
       </div>
     </div>
     
-
-    
     <!-- 事件列表侧边栏 -->
     <div class="sidebar" :class="{ 'open': showSidebar }">
       <div class="sidebar-header">
@@ -102,6 +100,8 @@
     <button class="toggle-sidebar" @click="toggleSidebar">
       📚 {{ showSidebar ? '隐藏' : '显示' }}故事
     </button>
+    
+
   </div>
 </template>
 
@@ -110,14 +110,6 @@ import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { dbService } from '../utils/database.js'
 import { isCloudConfigured } from '../supabase.js'
-
-// 修复Leaflet默认图标问题
-delete L.Icon.Default.prototype._getIconUrl
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon-2x.png',
-  iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png',
-  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png',
-})
 
 export default {
   name: 'SimpleInteractiveMap',
@@ -132,22 +124,22 @@ export default {
       locating: false,
       currentLocationMarker: null,
       syncEnabled: true,
+      switchingView: false,
+      is3DView: false,
       newEvent: {
         title: '',
         description: '',
         type: ''
       },
-
     }
   },
   mounted() {
-    // 确保DOM完全加载后再初始化地图
     this.$nextTick(() => {
       this.initMap()
       this.loadEvents()
     })
   },
-
+  
   beforeUnmount() {
     if (this.subscription) {
       dbService.unsubscribe(this.subscription)
@@ -156,19 +148,117 @@ export default {
   
   methods: {
     initMap() {
-      // 初始化地图，默认显示北京
       this.map = L.map('map').setView([39.9042, 116.4074], 10)
       
-      // 添加高德地图图层
       L.tileLayer('https://webrd01.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=7&x={x}&y={y}&z={z}', {
         attribution: '© 高德地图'
       }).addTo(this.map)
       
-      // 点击地图事件
       this.map.on('click', (e) => {
         this.selectedLocation = e.latlng
         this.showModal = true
       })
+    },
+    
+    async init3DView() {
+      try {
+        console.log('正在初始化Cesium 3D地球...')
+        
+        // CesiumEarth组件已经通过Vue模板自动加载
+        console.log('Cesium 3D地球初始化成功')
+        
+      } catch (error) {
+        console.error('Cesium 3D地球初始化失败:', error)
+        this.switchingView = false
+        alert('3D地球加载失败，已切换回2D模式')
+      }
+    },
+    
+    async toggle3DView() {
+      if (this.switchingView) return
+      
+      this.switchingView = true
+      
+      try {
+        if (this.is3DView) {
+          // 切换到2D地图
+          await this.$nextTick()
+          // 确保地图容器存在
+          if (document.getElementById('map')) {
+            this.initMap()
+            this.recreateMarkers()
+            this.is3DView = !this.is3DView
+          } else {
+            console.error('地图容器未找到')
+          }
+        } else {
+          // 切换到3D地球
+          if (this.map) {
+            this.map.remove()
+            this.map = null
+          }
+          
+          await this.$nextTick()
+          await this.init3DView()
+          this.is3DView = !this.is3DView
+        }
+      } catch (error) {
+        console.error('切换视图失败:', error)
+        alert('切换视图失败，请刷新页面重试')
+      } finally {
+        this.switchingView = false
+      }
+    },
+    
+    recreateMarkers() {
+      this.clearAllMarkers()
+      this.events.forEach(event => {
+        const marker = L.marker([event.location.lat, event.location.lng], {
+          icon: this.createCustomIcon(event.type)
+        })
+          .addTo(this.map)
+          .bindPopup(`
+            <div style="min-width: 200px; padding: 4px;">
+              <h4 style="margin: 0 0 8px 0; font-size: 16px; font-weight: 600; color: #1e2022;">${event.title}</h4>
+              <p style="margin: 0 0 8px 0; font-size: 14px; color: #8a919f; line-height: 1.5;">${event.description}</p>
+              <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #f1f1f2;">
+                <span style="font-size: 12px; color: #8a919f;">${this.formatDate(event.timestamp)}</span>
+              </div>
+            </div>
+          `)
+        
+        this.markers.push({ id: event.id, marker })
+      })
+    },
+    
+    get3DIconUrl(type) {
+      const icons = {
+        accident: 'data:image/svg+xml;base64,' + btoa(`
+          <svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="16" cy="16" r="14" fill="#ff4d4f" stroke="white" stroke-width="2"/>
+            <text x="16" y="20" text-anchor="middle" fill="white" font-size="12">🚗</text>
+          </svg>
+        `),
+        event: 'data:image/svg+xml;base64,' + btoa(`
+          <svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="16" cy="16" r="14" fill="#52c41a" stroke="white" stroke-width="2"/>
+            <text x="16" y="20" text-anchor="middle" fill="white" font-size="12">🎉</text>
+          </svg>
+        `),
+        news: 'data:image/svg+xml;base64,' + btoa(`
+          <svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="16" cy="16" r="14" fill="#1890ff" stroke="white" stroke-width="2"/>
+            <text x="16" y="20" text-anchor="middle" fill="white" font-size="12">📰</text>
+          </svg>
+        `),
+        other: 'data:image/svg+xml;base64,' + btoa(`
+          <svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="16" cy="16" r="14" fill="#8c8c8c" stroke="white" stroke-width="2"/>
+            <text x="16" y="20" text-anchor="middle" fill="white" font-size="12">📍</text>
+          </svg>
+        `)
+      }
+      return icons[type] || icons.other
     },
     
     async addEvent() {
@@ -187,34 +277,35 @@ export default {
         timestamp: new Date().toISOString()
       }
       
-      // 直接保存到云数据库
       const savedEvent = await dbService.addEvent(event)
       if (!savedEvent) {
         alert('保存失败，请检查网络连接')
         return
       }
       
-      // 使用云返回的事件数据
       this.events.unshift(savedEvent)
       
-      // 创建地图标记
-      const marker = L.marker([savedEvent.location.lat, savedEvent.location.lng], {
-        icon: this.createCustomIcon(savedEvent.type)
-      })
-        .addTo(this.map)
-        .bindPopup(`
-          <div style="min-width: 200px; padding: 4px;">
-            <h4 style="margin: 0 0 8px 0; font-size: 16px; font-weight: 600; color: #1e2022;">${savedEvent.title}</h4>
-            <p style="margin: 0 0 8px 0; font-size: 14px; color: #8a919f; line-height: 1.5;">${savedEvent.description}</p>
-            <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #f1f1f2;">
-              <span style="font-size: 12px; color: #8a919f;">${this.formatDate(savedEvent.timestamp)}</span>
+      if (this.is3DView) {
+        // Cesium组件会自动响应事件变化
+        console.log('在3D地球中添加事件标记')
+      } else if (this.map) {
+        const marker = L.marker([savedEvent.location.lat, savedEvent.location.lng], {
+          icon: this.createCustomIcon(savedEvent.type)
+        })
+          .addTo(this.map)
+          .bindPopup(`
+            <div style="min-width: 200px; padding: 4px;">
+              <h4 style="margin: 0 0 8px 0; font-size: 16px; font-weight: 600; color: #1e2022;">${savedEvent.title}</h4>
+              <p style="margin: 0 0 8px 0; font-size: 14px; color: #8a919f; line-height: 1.5;">${savedEvent.description}</p>
+              <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #f1f1f2;">
+                <span style="font-size: 12px; color: #8a919f;">${this.formatDate(savedEvent.timestamp)}</span>
+              </div>
             </div>
-          </div>
-        `)
+          `)
+        
+        this.markers.push({ id: savedEvent.id, marker })
+      }
       
-      this.markers.push({ id: savedEvent.id, marker })
-      
-      // 重置表单和关闭模态框
       this.resetForm()
       this.showModal = false
     },
@@ -226,25 +317,31 @@ export default {
         return
       }
       
-      // 从事件列表中删除
       this.events = this.events.filter(event => event.id !== eventId)
       
-      // 从地图中删除标记
       const markerIndex = this.markers.findIndex(m => m.id === eventId)
       if (markerIndex !== -1) {
-        this.map.removeLayer(this.markers[markerIndex].marker)
+        if (this.is3DView) {
+          // Cesium组件会自动响应事件变化
+          console.log('在3D地球中删除事件标记')
+        } else if (this.map && this.markers[markerIndex].marker) {
+          this.map.removeLayer(this.markers[markerIndex].marker)
+        }
         this.markers.splice(markerIndex, 1)
       }
     },
     
     focusOnEvent(event) {
-      // 移动地图到事件位置
-      this.map.setView([event.location.lat, event.location.lng], 15)
-      
-      // 打开对应的标记弹窗
-      const markerObj = this.markers.find(m => m.id === event.id)
-      if (markerObj) {
-        markerObj.marker.openPopup()
+      if (this.is3DView) {
+        // Cesium组件会自动处理事件聚焦
+        console.log(`在3D地球中聚焦到事件: ${event.title}`)
+      } else if (this.map) {
+        this.map.setView([event.location.lat, event.location.lng], 15)
+        
+        const markerObj = this.markers.find(m => m.id === event.id)
+        if (markerObj && markerObj.marker) {
+          markerObj.marker.openPopup()
+        }
       }
     },
     
@@ -325,7 +422,6 @@ export default {
     createCustomIcon(type) {
       const iconConfig = this.getMapPinIcon(type)
       
-      // 创建自定义地图标记图标
       return L.divIcon({
         html: `
           <div style="
@@ -376,8 +472,6 @@ export default {
       return new Date(timestamp).toLocaleString('zh-CN')
     },
     
-
-    
     async getCurrentLocation() {
       if (!navigator.geolocation) {
         alert('您的浏览器不支持地理定位功能')
@@ -390,39 +484,40 @@ export default {
         (position) => {
           const { latitude, longitude } = position.coords
           
-          // 移动地图到当前位置
-          this.map.setView([latitude, longitude], 15)
-          
-          // 移除之前的当前位置标记
-          if (this.currentLocationMarker) {
-            this.map.removeLayer(this.currentLocationMarker)
-          }
-          
-          // 创建当前位置标记
-          const currentLocationIcon = L.divIcon({
-            html: '<div style="background: #4285f4; border: 3px solid white; border-radius: 50%; width: 20px; height: 20px; box-shadow: 0 2px 6px rgba(0,0,0,0.3);"></div>',
-            iconSize: [20, 20],
-            className: 'current-location-marker'
-          })
-          
-          this.currentLocationMarker = L.marker([latitude, longitude], { icon: currentLocationIcon })
-            .addTo(this.map)
-            .bindPopup(`
-              <div style="min-width: 200px; padding: 4px;">
-                <h4 style="margin: 0 0 8px 0; font-size: 16px; font-weight: 600; color: #1e2022;">📍 您的当前位置</h4>
-                <p style="margin: 4px 0; font-size: 14px; color: #8a919f;">纬度: ${latitude.toFixed(6)}</p>
-                <p style="margin: 4px 0; font-size: 14px; color: #8a919f;">经度: ${longitude.toFixed(6)}</p>
-                <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #f1f1f2;">
-                  <span style="font-size: 12px; color: #8a919f;">定位时间: ${new Date().toLocaleString('zh-CN')}</span>
+          if (this.is3DView) {
+            // Cesium组件会自动处理定位
+            console.log('在3D地球中定位到:', latitude, longitude)
+          } else if (this.map) {
+            this.map.setView([latitude, longitude], 15)
+            
+            if (this.currentLocationMarker && this.currentLocationMarker.marker) {
+              this.map.removeLayer(this.currentLocationMarker.marker)
+            }
+            
+            const currentLocationIcon = L.divIcon({
+              html: '<div style="background: #4285f4; border: 3px solid white; border-radius: 50%; width: 20px; height: 20px; box-shadow: 0 2px 6px rgba(0,0,0,0.3);"></div>',
+              iconSize: [20, 20],
+              className: 'current-location-marker'
+            })
+            
+            this.currentLocationMarker = L.marker([latitude, longitude], { icon: currentLocationIcon })
+              .addTo(this.map)
+              .bindPopup(`
+                <div style="min-width: 200px; padding: 4px;">
+                  <h4 style="margin: 0 0 8px 0; font-size: 16px; font-weight: 600; color: #1e2022;">📍 您的当前位置</h4>
+                  <p style="margin: 4px 0; font-size: 14px; color: #8a919f;">纬度: ${latitude.toFixed(6)}</p>
+                  <p style="margin: 4px 0; font-size: 14px; color: #8a919f;">经度: ${longitude.toFixed(6)}</p>
+                  <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #f1f1f2;">
+                    <span style="font-size: 12px; color: #8a919f;">定位时间: ${new Date().toLocaleString('zh-CN')}</span>
+                  </div>
                 </div>
-              </div>
-            `)
-            .openPopup()
-          
-          // 3秒后自动关闭弹窗
-          setTimeout(() => {
-            this.currentLocationMarker.closePopup()
-          }, 3000)
+              `)
+              .openPopup()
+            
+            setTimeout(() => {
+              this.currentLocationMarker.closePopup()
+            }, 3000)
+          }
           
           this.locating = false
         },
@@ -450,44 +545,42 @@ export default {
         {
           enableHighAccuracy: true,
           timeout: 10000,
-          maximumAge: 300000 // 5分钟内的缓存位置
+          maximumAge: 300000
         }
       )
     },
-
+    
     async loadEvents() {
       try {
-        // 从云数据库加载事件
         if (isCloudConfigured) {
           this.events = await dbService.getAllEvents()
           
-          // 重新创建地图标记
-          this.events.forEach(event => {
-            const marker = L.marker([event.location.lat, event.location.lng], {
-              icon: this.createCustomIcon(event.type)
-            })
-              .addTo(this.map)
-              .bindPopup(`
-                <div style="min-width: 200px; padding: 4px;">
-                  <h4 style="margin: 0 0 8px 0; font-size: 16px; font-weight: 600; color: #1e2022;">${event.title}</h4>
-                  <p style="margin: 0 0 8px 0; font-size: 14px; color: #8a919f; line-height: 1.5;">${event.description}</p>
-                  <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #f1f1f2;">
-                    <span style="font-size: 12px; color: #8a919f;">${this.formatDate(event.timestamp)}</span>
+          if (this.map) {
+            this.events.forEach(event => {
+              const marker = L.marker([event.location.lat, event.location.lng], {
+                icon: this.createCustomIcon(event.type)
+              })
+                .addTo(this.map)
+                .bindPopup(`
+                  <div style="min-width: 200px; padding: 4px;">
+                    <h4 style="margin: 0 0 8px 0; font-size: 16px; font-weight: 600; color: #1e2022;">${event.title}</h4>
+                    <p style="margin: 0 0 8px 0; font-size: 14px; color: #8a919f; line-height: 1.5;">${event.description}</p>
+                    <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #f1f1f2;">
+                      <span style="font-size: 12px; color: #8a919f;">${this.formatDate(event.timestamp)}</span>
+                    </div>
                   </div>
-                </div>
-              `)
+                `)
+              
+              this.markers.push({ id: event.id, marker })
+            })
             
-            this.markers.push({ id: event.id, marker })
-          })
-          
-          // 设置实时监听
-          this.setupRealtimeSync()
+            this.setupRealtimeSync()
+          }
         } else {
           console.log('云数据库未配置，使用空地图')
         }
       } catch (e) {
         console.error('加载数据失败:', e)
-        console.log('地图继续显示，但可能无法同步数据')
       }
     },
     
@@ -516,21 +609,23 @@ export default {
     handleRemoteInsert(event) {
       this.events.unshift(event)
       
-      const marker = L.marker([event.location.lat, event.location.lng], {
-        icon: this.createCustomIcon(event.type)
-      })
-        .addTo(this.map)
-        .bindPopup(`
-          <div style="min-width: 200px; padding: 4px;">
-            <h4 style="margin: 0 0 8px 0; font-size: 16px; font-weight: 600; color: #1e2022;">${event.title}</h4>
-            <p style="margin: 0 0 8px 0; font-size: 14px; color: #8a919f; line-height: 1.5;">${event.description}</p>
-            <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #f1f1f2;">
-              <span style="font-size: 12px; color: #8a919f;">${this.formatDate(event.timestamp)}</span>
+      if (this.map) {
+        const marker = L.marker([event.location.lat, event.location.lng], {
+          icon: this.createCustomIcon(event.type)
+        })
+          .addTo(this.map)
+          .bindPopup(`
+            <div style="min-width: 200px; padding: 4px;">
+              <h4 style="margin: 0 0 8px 0; font-size: 16px; font-weight: 600; color: #1e2022;">${event.title}</h4>
+              <p style="margin: 0 0 8px 0; font-size: 14px; color: #8a919f; line-height: 1.5;">${event.description}</p>
+              <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #f1f1f2;">
+                <span style="font-size: 12px; color: #8a919f;">${this.formatDate(event.timestamp)}</span>
+              </div>
             </div>
-          </div>
-        `)
-      
-      this.markers.push({ id: event.id, marker })
+          `)
+        
+        this.markers.push({ id: event.id, marker })
+      }
     },
     
     handleRemoteUpdate(_oldRecord, newRecord) {
@@ -538,18 +633,19 @@ export default {
       if (index !== -1) {
         this.events[index] = newRecord
         
-        // 更新对应的标记
-        const markerObj = this.markers.find(m => m.id === newRecord.id)
-        if (markerObj) {
-          markerObj.marker.setPopupContent(`
-            <div style="min-width: 200px; padding: 4px;">
-              <h4 style="margin: 0 0 8px 0; font-size: 16px; font-weight: 600; color: #1e2022;">${newRecord.title}</h4>
-              <p style="margin: 0 0 8px 0; font-size: 14px; color: #8a919f; line-height: 1.5;">${newRecord.description}</p>
-              <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #f1f1f2;">
-                <span style="font-size: 12px; color: #8a919f;">${this.formatDate(newRecord.timestamp)}</span>
+        if (this.map) {
+          const markerObj = this.markers.find(m => m.id === newRecord.id)
+          if (markerObj) {
+            markerObj.marker.setPopupContent(`
+              <div style="min-width: 200px; padding: 4px;">
+                <h4 style="margin: 0 0 8px 0; font-size: 16px; font-weight: 600; color: #1e2022;">${newRecord.title}</h4>
+                <p style="margin: 0 0 8px 0; font-size: 14px; color: #8a919f; line-height: 1.5;">${newRecord.description}</p>
+                <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #f1f1f2;">
+                  <span style="font-size: 12px; color: #8a919f;">${this.formatDate(newRecord.timestamp)}</span>
+                </div>
               </div>
-            </div>
-          `)
+            `)
+          }
         }
       }
     },
@@ -560,17 +656,22 @@ export default {
       if (index !== -1) {
         this.events.splice(index, 1)
         
-        // 删除对应的标记
         const markerIndex = this.markers.findIndex(m => m.id === event.id)
         if (markerIndex !== -1) {
-          this.map.removeLayer(this.markers[markerIndex].marker)
+          if (this.map) {
+            this.map.removeLayer(this.markers[markerIndex].marker)
+          }
           this.markers.splice(markerIndex, 1)
         }
       }
     },
     
     clearAllMarkers() {
-      this.markers.forEach(m => this.map.removeLayer(m.marker))
+      this.markers.forEach(m => {
+        if (m.marker && this.map) {
+          this.map.removeLayer(m.marker)
+        }
+      })
       this.markers = []
     }
   }
@@ -594,7 +695,13 @@ export default {
   z-index: 1;
 }
 
-/* 模态框样式 - 扁平化设计 */
+.cesium-earth {
+  width: 100%;
+  height: 100%;
+  z-index: 1;
+}
+
+/* 保持原有的样式不变 */
 .modal-overlay {
   position: fixed;
   top: 0;
@@ -758,14 +865,12 @@ export default {
   opacity: 0.8;
 }
 
-/* 输入框占位符样式 */
 .form-group input::placeholder,
 .form-group textarea::placeholder {
   color: #adb5bd;
   font-style: italic;
 }
 
-/* 模态框滚动条 */
 .modal::-webkit-scrollbar {
   width: 6px;
 }
@@ -783,7 +888,6 @@ export default {
   background: rgba(102, 126, 234, 0.5);
 }
 
-/* 侧边栏样式 */
 .sidebar {
   position: fixed;
   top: 0;
@@ -921,28 +1025,6 @@ export default {
   margin-bottom: 0.8rem;
 }
 
-
-
-.event-type.accident {
-  background: #ffebe9;
-  color: #cf1322;
-}
-
-.event-type.event {
-  background: #e6f7e6;
-  color: #389e0d;
-}
-
-.event-type.news {
-  background: #e6f4ff;
-  color: #0958d9;
-}
-
-.event-type.other {
-  background: #f5f5f5;
-  color: #595959;
-}
-
 .delete-btn {
   background: #ffffff;
   border: 1px solid #f1f1f2;
@@ -1068,7 +1150,53 @@ export default {
   transform: translateY(-50%) scale(0.98);
 }
 
-/* 响应式设计 */
+.toggle-3d {
+  position: fixed;
+  top: 80px;
+  right: 20px;
+  background: #ffffff;
+  color: #1e2022;
+  border: 1px solid #f1f1f2;
+  padding: 0.7rem 1rem;
+  border-radius: 6px;
+  cursor: pointer;
+  z-index: 996;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  transition: all 0.2s ease;
+  font-weight: 500;
+  font-size: 0.85rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.toggle-3d:hover:not(:disabled) {
+  background: #f1f1f2;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  transform: translateY(-1px);
+}
+
+.toggle-3d:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background: #f8f8f9;
+  color: #8a919f;
+  transform: none;
+}
+
+.toggle-3d:active:not(:disabled) {
+  transform: translateY(0) scale(0.98);
+}
+
+.custom-map-pin {
+  transition: all 0.3s ease;
+  filter: drop-shadow(0 2px 4px rgba(0,0,0,0.1));
+}
+
+.custom-map-pin:hover {
+  transform: scale(1.1);
+}
+
 @media (max-width: 768px) {
   .sidebar {
     width: 100%;
@@ -1091,32 +1219,18 @@ export default {
     transform: translateX(50%) scale(1.05);
   }
   
+  .toggle-3d {
+    top: 60px;
+    right: 10px;
+    padding: 0.6rem 0.8rem;
+    font-size: 0.8rem;
+  }
+  
   .location-btn {
     top: 10px;
     right: 10px;
     padding: 0.6rem 1rem;
     font-size: 0.8rem;
-  }
-}
-
-
-
-/* 自定义地图标记样式 */
-.custom-map-pin {
-  transition: all 0.3s ease;
-  filter: drop-shadow(0 2px 4px rgba(0,0,0,0.1));
-}
-
-.custom-map-pin:hover {
-  transform: scale(1.1);
-}
-
-/* 响应式设计优化 */
-@media (max-width: 768px) {
-  
-  .tab-btn {
-    font-size: 0.9rem;
-    padding: 0.6rem;
   }
 }
 </style>
