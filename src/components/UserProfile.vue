@@ -116,10 +116,18 @@ export default {
     },
     
     userEventsCount() {
-      return this.events.filter(event => event.user_id === this.user.id).length
+      const count = this.events.filter(event => event.user_id === this.user.id).length
+      console.log('用户故事数计算:', {
+        userId: this.user.id,
+        totalEvents: this.events.length,
+        userEvents: this.events.filter(event => event.user_id === this.user.id),
+        count
+      })
+      return count
     },
     
     totalEventsCount() {
+      console.log('总故事数计算:', this.events.length, this.events)
       return this.events.length
     },
     

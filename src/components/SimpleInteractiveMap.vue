@@ -641,6 +641,9 @@ export default {
             })
             
             this.setupRealtimeSync()
+            
+            // 通知父组件更新事件列表
+            this.$emit('update-events', this.events)
           }
         } else {
           console.log('云数据库未配置，使用空地图')
