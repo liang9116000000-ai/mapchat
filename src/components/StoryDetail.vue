@@ -176,6 +176,72 @@
           </div>
         </div>
 
+        <!-- 附近群聊 -->
+        <div class="chat-section" v-if="!showChatRoom">
+          <h4>附近群聊</h4>
+          <div class="groups-list">
+            <div v-for="group in nearbyGroups" :key="group.id" class="group-item" @click="enterGroupChat(group)">
+              <div class="group-avatar" :style="{ background: getGroupAvatarColor(group.name) }">
+                <img v-if="group.avatar" :src="group.avatar" />
+                <span v-else>{{ group.name.charAt(0) }}</span>
+              </div>
+              <div class="group-info">
+                <div class="group-name">{{ group.name }}</div>
+                <div class="group-desc">{{ group.description }}</div>
+                <div class="group-stats">
+                  <span class="member-count">{{ group.memberCount }}人</span>
+                  <span class="activity">{{ group.lastActivity }}</span>
+                </div>
+              </div>
+              <button class="join-btn" :class="{ 'joined': group.joined }" @click.stop="joinGroup(group)">
+                {{ group.joined ? '已加入' : '加入' }}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 群组聊天室 -->
+        <div class="chat-section" v-if="showChatRoom">
+          <div class="chat-room-header">
+            <button class="back-btn" @click="exitChatRoom">← 返回</button>
+            <h4>{{ selectedGroup?.name }}</h4>
+            <span class="group-member-count">{{ selectedGroup?.memberCount }}人</span>
+          </div>
+          <div class="chat-container">
+            <div class="chat-messages" ref="chatMessages">
+              <div v-for="message in chatMessages" :key="message.id" class="message-item">
+                <div class="message-avatar" :style="{ background: getAvatarColor(message.user?.display_name || '匿名') }">
+                  <img v-if="message.user?.avatar_url" :src="message.user.avatar_url" />
+                  <span v-else>{{ (message.user?.display_name || '匿名').charAt(0) }}</span>
+                </div>
+                <div class="message-content">
+                  <div class="message-user">
+                    {{ message.user?.display_name || '匿名用户' }}
+                    <span class="message-time">{{ formatChatTime(message.created_at) }}</span>
+                  </div>
+                  <div class="message-text">{{ message.content }}</div>
+                </div>
+              </div>
+            </div>
+            
+            <div class="chat-input">
+              <input 
+                v-model="newChatMessage"
+                @keyup.enter="sendChatMessage"
+                placeholder="说点什么..."
+                class="chat-input-field"
+              />
+              <button 
+                @click="sendChatMessage" 
+                :disabled="!newChatMessage.trim()"
+                class="send-btn"
+              >
+                发送
+              </button>
+            </div>
+          </div>
+        </div>
+
         <!-- 话题推荐 -->
         <div class="topic-section">
           <h4>热门话题</h4>
@@ -218,7 +284,12 @@ export default {
       commonEmojis: ['😊', '😍', '🤔', '😂', '❤️', '👍', '🎉', '🔥'],
       recommendations: this.generateRecommendations(),
       hotTopics: ['美食探店', '日常穿搭', '旅行日记', '生活记录', '美妆分享', '学习笔记'],
-      detailedAddress: ''
+      detailedAddress: '',
+      nearbyGroups: [],
+      selectedGroup: null,
+      chatMessages: [],
+      newChatMessage: '',
+      showChatRoom: false
     }
   },
   
@@ -230,6 +301,9 @@ export default {
         this.story.location.lng
       )
     }
+    
+    // 加载附近群组
+    await this.loadNearbyGroups()
   },
   
   computed: {
@@ -487,6 +561,204 @@ export default {
       }
       
       return null
+    },
+    
+    async loadNearbyGroups() {
+      try {
+        // 模拟加载附近群组
+        this.nearbyGroups = this.generateMockGroups()
+      } catch (error) {
+        console.error('加载附近群组失败:', error)
+      }
+    },
+    
+    generateMockGroups() {
+      return [
+        {
+          id: 1,
+          name: '附近美食分享',
+          description: '分享身边的美食，一起探店',
+          avatar: 'https://picsum.photos/50/50?random=food',
+          memberCount: 234,
+          lastActivity: '2分钟前',
+          joined: false
+        },
+        {
+          id: 2,
+          name: '本地跑步团',
+          description: '晨跑夜跑，健康生活',
+          avatar: 'https://picsum.photos/50/50?random=run',
+          memberCount: 89,
+          lastActivity: '15分钟前',
+          joined: false
+        },
+        {
+          id: 3,
+          name: '宠物交流群',
+          description: '分享养宠心得，线下聚会',
+          avatar: 'https://picsum.photos/50/50?random=pet',
+          memberCount: 156,
+          lastActivity: '1小时前',
+          joined: true
+        },
+        {
+          id: 4,
+          name: '周末活动组',
+          description: '组织周末出游、聚会活动',
+          avatar: 'https://picsum.photos/50/50?random=weekend',
+          memberCount: 67,
+          lastActivity: '3小时前',
+          joined: false
+        }
+      ]
+    },
+    
+    joinGroup(group) {
+      group.joined = !group.joined
+      if (group.joined) {
+        group.memberCount += 1
+        console.log('加入群组:', group.name)
+      } else {
+        group.memberCount -= 1
+        console.log('退出群组:', group.name)
+      }
+    },
+    
+    enterGroupChat(group) {
+      if (!group.joined) {
+        // 如果未加入，先自动加入
+        group.joined = true
+        group.memberCount += 1
+      }
+      
+      this.selectedGroup = group
+      this.showChatRoom = true
+      this.loadGroupChatMessages(group)
+    },
+    
+    exitChatRoom() {
+      this.showChatRoom = false
+      this.selectedGroup = null
+      this.chatMessages = []
+      this.newChatMessage = ''
+    },
+    
+    loadGroupChatMessages(group) {
+      // 模拟加载群组聊天消息
+      this.chatMessages = this.generateMockGroupMessages(group)
+      this.scrollToBottom()
+    },
+    
+    generateMockGroupMessages(group) {
+      const messages = {
+        1: [ // 美食分享群
+          { id: 1, user: { display_name: '美食达人', avatar_url: null }, content: '今天发现了一家超棒的日料店！', created_at: new Date(Date.now() - 45 * 60 * 1000).toISOString() },
+          { id: 2, user: { display_name: '吃货小王', avatar_url: null }, content: '在哪里？地址分享一下呗', created_at: new Date(Date.now() - 30 * 60 * 1000).toISOString() },
+          { id: 3, user: { display_name: '美食达人', avatar_url: null }, content: '在市中心商场三楼，叫樱花小厨', created_at: new Date(Date.now() - 25 * 60 * 1000).toISOString() }
+        ],
+        2: [ // 本地跑步团
+          { id: 1, user: { display_name: '跑步教练', avatar_url: null }, content: '明天早上6点公园集合，有人一起吗？', created_at: new Date(Date.now() - 60 * 60 * 1000).toISOString() },
+          { id: 2, user: { display_name: '晨跑爱好者', avatar_url: null }, content: '我参加！几点结束？', created_at: new Date(Date.now() - 40 * 60 * 1000).toISOString() }
+        ],
+        3: [ // 宠物交流群
+          { id: 1, user: { display_name: '猫奴', avatar_url: null }, content: '我家猫咪今天学会握手了！', created_at: new Date(Date.now() - 20 * 60 * 1000).toISOString() },
+          { id: 2, user: { display_name: '铲屎官', avatar_url: null }, content: '好可爱！求教程', created_at: new Date(Date.now() - 15 * 60 * 1000).toISOString() }
+        ],
+        4: [ // 周末活动组
+          { id: 1, user: { display_name: '活动组织者', avatar_url: null }, content: '这周末有人想一起爬山吗？', created_at: new Date(Date.now() - 90 * 60 * 1000).toISOString() },
+          { id: 2, user: { display_name: '户外爱好者', avatar_url: null }, content: '我想去！哪个山？', created_at: new Date(Date.now() - 75 * 60 * 1000).toISOString() }
+        ]
+      }
+      
+      return messages[group.id] || []
+    },
+    
+    async sendChatMessage() {
+      if (!this.newChatMessage.trim() || !this.currentUser) return
+      
+      const message = {
+        id: Date.now(),
+        user: {
+          display_name: this.currentUser.display_name || '我',
+          avatar_url: this.currentUser.avatar_url
+        },
+        content: this.newChatMessage.trim(),
+        created_at: new Date().toISOString()
+      }
+      
+      this.chatMessages.push(message)
+      this.newChatMessage = ''
+      this.scrollToBottom()
+      
+      // 更新群组最后活动时间
+      if (this.selectedGroup) {
+        this.selectedGroup.lastActivity = '刚刚'
+      }
+      
+      console.log('发送群组消息:', message)
+    },
+    
+    scrollToBottom() {
+      this.$nextTick(() => {
+        if (this.$refs.chatMessages) {
+          this.$refs.chatMessages.scrollTop = this.$refs.chatMessages.scrollHeight
+        }
+      })
+    },
+    
+    formatChatTime(timestamp) {
+      const date = new Date(timestamp)
+      const now = new Date()
+      const diffMinutes = Math.floor((now - date) / (1000 * 60))
+      
+      if (diffMinutes < 1) return '刚刚'
+      if (diffMinutes < 60) return `${diffMinutes}分钟前`
+      if (diffMinutes < 1440) return `${Math.floor(diffMinutes / 60)}小时前`
+      return this.formatTime(timestamp)
+    },
+    
+    getAvatarColor(name) {
+      // 根据用户名生成一致的颜色
+      const colors = [
+        'linear-gradient(135deg, #667eea, #764ba2)',
+        'linear-gradient(135deg, #f093fb, #f5576c)',
+        'linear-gradient(135deg, #4facfe, #00f2fe)',
+        'linear-gradient(135deg, #43e97b, #38f9d7)',
+        'linear-gradient(135deg, #fa709a, #fee140)',
+        'linear-gradient(135deg, #30cfd0, #330867)',
+        'linear-gradient(135deg, #a8edea, #fed6e3)',
+        'linear-gradient(135deg, #ff9a9e, #fecfef)',
+        'linear-gradient(135deg, #fbc2eb, #a6c1ee)',
+        'linear-gradient(135deg, #fdcbf1, #e6dee9)'
+      ]
+      
+      let hash = 0
+      for (let i = 0; i < name.length; i++) {
+        hash = name.charCodeAt(i) + ((hash << 5) - hash)
+      }
+      
+      return colors[Math.abs(hash) % colors.length]
+    },
+    
+    getGroupAvatarColor(groupName) {
+      // 为群组头像生成特定的颜色
+      const groupColors = [
+        'linear-gradient(135deg, #ff6b6b, #ff8e53)',
+        'linear-gradient(135deg, #4ecdc4, #44a08d)',
+        'linear-gradient(135deg, #6a11cb, #2575fc)',
+        'linear-gradient(135deg, #f2994a, #f2c94c)',
+        'linear-gradient(135deg, #89f7fe, #66a6ff)',
+        'linear-gradient(135deg, #fddb92, #d1fdff)',
+        'linear-gradient(135deg, #9890e3, #b1f4cf)',
+        'linear-gradient(135deg, #ebc0fd, #d9ded8)'
+      ]
+      
+      let hash = 0
+      for (let i = 0; i < groupName.length; i++) {
+        hash = groupName.charCodeAt(i) + ((hash << 5) - hash)
+      }
+      
+      return groupColors[Math.abs(hash) % groupColors.length]
     }
   }
 }
@@ -1002,7 +1274,7 @@ export default {
   min-width: 300px;
 }
 
-.recommend-section, .topic-section {
+.recommend-section, .topic-section, .chat-section {
   margin-bottom: 40px;
 }
 
@@ -1081,6 +1353,252 @@ export default {
   background: #f0f0f0;
   color: #333;
   border-color: #667eea;
+}
+
+/* 群组区域 */
+.groups-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.group-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  background: #fff;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.group-item:hover {
+  background: #f8f8f8;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.group-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  background: #f0f0f0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  font-weight: bold;
+  color: white;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.group-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.group-info {
+  flex: 1;
+}
+
+.group-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 2px;
+}
+
+.group-desc {
+  font-size: 12px;
+  color: #666;
+  margin-bottom: 4px;
+}
+
+.group-stats {
+  display: flex;
+  gap: 8px;
+}
+
+.member-count {
+  font-size: 11px;
+  color: #999;
+}
+
+.activity {
+  font-size: 11px;
+  color: #999;
+}
+
+.join-btn {
+  padding: 6px 12px;
+  background: #667eea;
+  color: white;
+  border: none;
+  border-radius: 16px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.2s ease;
+  flex-shrink: 0;
+}
+
+.join-btn:hover {
+  background: #5a67d8;
+}
+
+.join-btn.joined {
+  background: #f0f0f0;
+  color: #666;
+}
+
+.join-btn.joined:hover {
+  background: #e0e0e0;
+}
+
+/* 聊天室头部 */
+.chat-room-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid #e0e0e0;
+  margin-bottom: 12px;
+}
+
+.back-btn {
+  background: none;
+  border: none;
+  color: #667eea;
+  font-size: 14px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: background 0.2s ease;
+}
+
+.back-btn:hover {
+  background: #f0f0f0;
+}
+
+.chat-room-header h4 {
+  flex: 1;
+  font-size: 16px;
+  font-weight: 600;
+  color: #333;
+  margin: 0;
+}
+
+.group-member-count {
+  font-size: 12px;
+  color: #999;
+}
+
+/* 聊天区域 */
+.chat-container {
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.chat-messages {
+  height: 200px;
+  overflow-y: auto;
+  padding: 12px;
+  background: #fff;
+}
+
+.message-item {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.message-avatar {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #f0f0f0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: bold;
+  color: white;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.message-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+}
+
+.message-content {
+  flex: 1;
+}
+
+.message-user {
+  font-size: 11px;
+  color: #666;
+  margin-bottom: 2px;
+}
+
+.message-time {
+  font-size: 10px;
+  color: #999;
+  margin-left: 4px;
+}
+
+.message-text {
+  font-size: 12px;
+  color: #333;
+  line-height: 1.4;
+}
+
+.chat-input {
+  display: flex;
+  gap: 8px;
+  padding: 12px;
+  background: #f8f8f8;
+  border-top: 1px solid #e0e0e0;
+}
+
+.chat-input-field {
+  flex: 1;
+  padding: 8px 12px;
+  border: 1px solid #e0e0e0;
+  border-radius: 16px;
+  font-size: 12px;
+  outline: none;
+}
+
+.chat-input-field:focus {
+  border-color: #667eea;
+}
+
+.send-btn {
+  padding: 6px 16px;
+  background: #667eea;
+  color: white;
+  border: none;
+  border-radius: 16px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.send-btn:hover:not(:disabled) {
+  background: #5a67d8;
+}
+
+.send-btn:disabled {
+  background: #ccc;
+  cursor: not-allowed;
 }
 
 
