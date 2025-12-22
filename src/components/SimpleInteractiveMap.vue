@@ -30,12 +30,12 @@
           </div>
           
           <div class="form-group">
-            <label for="eventType">事件类型</label>
+            <label for="eventType">故事类型</label>
             <select id="eventType" v-model="newEvent.type" required>
-              <option value="accident">🚗 事故</option>
-              <option value="event">🎉 活动</option>
-              <option value="news">📰 新闻</option>
-              <option value="other">📍 其他</option>
+              <option value="story">故事</option>
+              <option value="event">活动</option>
+              <option value="news">新闻</option>
+              <option value="date">约会</option>
             </select>
           </div>
           
@@ -135,7 +135,7 @@ export default {
       newEvent: {
         title: '',
         description: '',
-        type: 'event'
+        type: 'story'
       },
     }
   },
@@ -433,10 +433,10 @@ export default {
     
     getMapPinIcon(type) {
       const pinIcons = {
-        accident: {
-          emoji: '🚗',
-          color: '#ff4d4f',
-          backgroundColor: '#fff1f0'
+        story: {
+          emoji: '📖',
+          color: '#9333ea',
+          backgroundColor: '#f3e8ff'
         },
         event: {
           emoji: '🎉',
@@ -447,6 +447,11 @@ export default {
           emoji: '📰',
           color: '#1890ff',
           backgroundColor: '#e6f7ff'
+        },
+        date: {
+          emoji: '💕',
+          color: '#ec4899',
+          backgroundColor: '#fce7f3'
         },
         other: {
           emoji: '📍',

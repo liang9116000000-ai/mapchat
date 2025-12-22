@@ -22,14 +22,14 @@
   <!-- 登录模态框 - 移到app容器外 -->
   <Teleport to="body">
     <div v-if="showLogin" class="modal-overlay" @click="showLogin = false">
-      <div class="modal" @click.stop>
+      <div class="modal login-modal" @click.stop>
         <Login @login-success="handleLoginSuccess" @close="showLogin = false" />
       </div>
     </div>
     
     <!-- 用户资料模态框 - 移到app容器外 -->
     <div v-if="showProfile" class="modal-overlay" @click="showProfile = false">
-      <div class="modal" @click.stop>
+      <div class="modal login-modal" @click.stop>
         <UserProfile 
           :user="user" 
           :events="events" 
@@ -211,7 +211,8 @@ export default {
   to { opacity: 1; }
 }
 
-.modal {
+/* 专门用于登录的模态框样式 */
+.modal.login-modal {
   background: transparent;
   border-radius: 10px;
   box-shadow: none;
@@ -225,14 +226,14 @@ export default {
 }
 
 /* 为模态框内的Login组件调整样式 */
-.modal .login-container {
+.login-modal .login-container {
   min-height: auto;
   background: none;
   padding: 0;
   width: 100%;
 }
 
-.modal .login-form {
+.login-modal .login-form {
   box-shadow: none;
   margin: 0;
 }

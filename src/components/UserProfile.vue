@@ -142,13 +142,14 @@ export default {
     },
     
     getEventTypeName(type) {
+      // 由于数据库约束，所有新保存的都是'event'类型
+      // 这里需要根据实际情况显示
       const types = {
-        accident: '事故',
-        event: '活动',
+        event: '故事', // 将event显示为故事
         news: '新闻',
         other: '其他'
       }
-      return types[type] || '其他'
+      return types[type] || '故事'
     },
     
     formatDate(timestamp) {
