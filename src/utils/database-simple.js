@@ -6,16 +6,68 @@ export class DatabaseServiceSimple {
   // 获取所有事件（简单版本）
   async getAllEvents() {
     try {
-      const { data, error } = await supabase
+      // 先获取所有事件
+      const { data: events, error: eventsError } = await supabase
         .from(TABLES.EVENTS)
         .select('*')
         .order('timestamp', { ascending: false })
       
-      if (error) {
-        console.log('获取事件失败:', error)
+      if (eventsError) {
+        console.log('获取事件失败:', eventsError)
         return []
       }
-      return data || []
+      
+      if (!events || events.length === 0) {
+        return []
+      }
+      
+      // 为每个事件添加用户信息
+      const eventsWithUser = await Promise.all(events.map(async (event) => {
+        console.log('处理事件:', event.id, '用户ID:', event.user_id)
+        
+        try {
+          // 尝试从users表获取用户信息
+          const { data: userData, error: userError } = await supabase
+            .from('users')
+            .select('id, email, display_name, avatar_url')
+            .eq('id', event.user_id)
+            .single()
+          
+          console.log('users表查询结果:', { userData, userError })
+          
+          if (!userError && userData) {
+            return {
+              ...event,
+              user: userData
+            }
+          } else {
+            console.log('users表没有数据，使用默认信息:', event.user_id)
+            // 如果users表中没有，使用默认信息
+            return {
+              ...event,
+              user: {
+                id: event.user_id,
+                email: '用户邮箱',
+                display_name: '用户' + event.user_id.slice(-4),
+                avatar_url: null
+              }
+            }
+          }
+        } catch (error) {
+          console.log('获取用户信息失败:', error)
+          return {
+            ...event,
+            user: {
+              id: event.user_id,
+              email: '未知用户',
+              display_name: '未知用户',
+              avatar_url: null
+            }
+          }
+        }
+      }))
+      
+      return eventsWithUser
     } catch (error) {
       console.error('获取事件失败:', error)
       return []

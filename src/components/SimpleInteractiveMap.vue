@@ -102,6 +102,20 @@
     
 
   </div>
+  
+  <!-- 故事详情模态框 -->
+  <Teleport to="body">
+    <div v-if="showStoryDetail" class="story-detail-overlay" @click="showStoryDetail = false">
+      <StoryDetail 
+        :story="selectedStory" 
+        :current-user="user"
+        @close="showStoryDetail = false"
+        @delete="handleDeleteStory"
+        @edit="handleEditStory"
+        @click.stop
+      />
+    </div>
+  </Teleport>
 </template>
 
 <script>
@@ -109,9 +123,13 @@ import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { dbServiceSimple } from '../utils/database-simple.js'
 import { isCloudConfigured } from '../supabase.js'
+import StoryDetail from './StoryDetail.vue'
 
 export default {
   name: 'SimpleInteractiveMap',
+  components: {
+    StoryDetail
+  },
   props: {
     user: {
       type: Object,
@@ -137,6 +155,8 @@ export default {
         description: '',
         type: 'story'
       },
+      selectedStory: null,
+      showStoryDetail: false,
     }
   },
   mounted() {
@@ -223,29 +243,10 @@ export default {
           icon: this.createCustomIcon(event.type)
         })
           .addTo(this.map)
-          .bindPopup(`
-                  <div style="min-width: 220px; padding: 8px;">
-                    <h4 style="margin: 0 0 8px 0; font-size: 16px; font-weight: 600; color: #1e2022;">${event.title}</h4>
-                    <p style="margin: 0 0 8px 0; font-size: 14px; color: #8a919f; line-height: 1.5;">${event.description}</p>
-                    ${event.user ? `
-                      <div style="margin-bottom: 8px; padding: 4px 0; border-bottom: 1px solid #f1f1f2;">
-                        <div style="display: flex; align-items: center; gap: 6px;">
-                          <div style="width: 24px; height: 24px; border-radius: 50%; background: #f1f1f2; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: bold;">
-                            ${(event.user.display_name || event.user.email).charAt(0).toUpperCase()}
-                          </div>
-                          <span style="font-size: 12px; color: #667eea; font-weight: 500;">
-                            ${event.user.display_name || event.user.email}
-                          </span>
-                        </div>
-                      </div>
-                    ` : ''}
-                    <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #f1f1f2;">
-                      <span style="font-size: 12px; color: #8a919f;">
-                        🕒 ${this.formatDate(event.created_at)}
-                      </span>
-                    </div>
-                  </div>
-          `)
+          .on('click', () => {
+            this.showStoryDetail = true
+            this.selectedStory = event
+          })
         
         this.markers.push({ id: event.id, marker })
       })
@@ -317,29 +318,10 @@ export default {
           icon: this.createCustomIcon(savedEvent.type)
         })
           .addTo(this.map)
-          .bindPopup(`
-            <div style="min-width: 220px; padding: 8px;">
-              <h4 style="margin: 0 0 8px 0; font-size: 16px; font-weight: 600; color: #1e2022;">${savedEvent.title}</h4>
-              <p style="margin: 0 0 8px 0; font-size: 14px; color: #8a919f; line-height: 1.5;">${savedEvent.description}</p>
-              ${savedEvent.user ? `
-                <div style="margin-bottom: 8px; padding: 4px 0; border-bottom: 1px solid #f1f1f2;">
-                  <div style="display: flex; align-items: center; gap: 6px;">
-                    <div style="width: 24px; height: 24px; border-radius: 50%; background: #f1f1f2; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: bold;">
-                      ${(savedEvent.user.display_name || savedEvent.user.email).charAt(0).toUpperCase()}
-                    </div>
-                    <span style="font-size: 12px; color: #667eea; font-weight: 500;">
-                      ${savedEvent.user.display_name || savedEvent.user.email}
-                    </span>
-                  </div>
-                </div>
-              ` : ''}
-              <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #f1f1f2;">
-                <span style="font-size: 12px; color: #8a919f;">
-                  🕒 ${this.formatDate(savedEvent.created_at)}
-                </span>
-              </div>
-            </div>
-          `)
+          .on('click', () => {
+            this.showStoryDetail = true
+            this.selectedStory = savedEvent
+          })
         
         this.markers.push({ id: savedEvent.id, marker })
       }
@@ -601,41 +583,26 @@ export default {
     async loadEvents() {
       try {
         if (isCloudConfigured) {
-          this.events = await dbServiceSimple.getAllEvents()
-          console.log('加载的事件数据:', this.events)
+      this.events = await dbServiceSimple.getAllEvents()
+      
+      // 为每个故事添加模拟图片
+      this.events = this.events.map(event => ({
+        ...event,
+        image: this.generateMockImage(event)
+      }))
+      
+      console.log('加载的事件数据:', this.events)
           
           if (this.map) {
             this.events.forEach(event => {
-              const marker = L.marker([event.location.lat, event.location.lng], {
-                icon: this.createCustomIcon(event.type)
-              })
-                .addTo(this.map)
-                .bindPopup(`
-                  <div style="min-width: 220px; padding: 8px;">
-                    <h4 style="margin: 0 0 8px 0; font-size: 16px; font-weight: 600; color: #1e2022;">${event.title}</h4>
-                    <p style="margin: 0 0 8px 0; font-size: 14px; color: #8a919f; line-height: 1.5;">${event.description}</p>
-                    ${event.user ? `
-                      <div style="margin-bottom: 8px; padding: 4px 0; border-bottom: 1px solid #f1f1f2;">
-                        <div style="display: flex; align-items: center; gap: 6px;">
-                          <div style="width: 24px; height: 24px; border-radius: 50%; background: #f1f1f2; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: bold;">
-                            ${(event.user.display_name || event.user.email).charAt(0).toUpperCase()}
-                          </div>
-                          <span style="font-size: 12px; color: #667eea; font-weight: 500;">
-                            ${event.user.display_name || event.user.email}
-                          </span>
-                        </div>
-                      </div>
-                    ` : ''}
-                    <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #f1f1f2;">
-                      <span style="font-size: 12px; color: #8a919f;">
-                        🕒 ${this.formatDate(event.timestamp || event.created_at)}
-                      </span>
-                      <span style="font-size: 12px; color: #8a919f; margin-left: 8px;">
-                        📍 ${event.location.lat.toFixed(3)}, ${event.location.lng.toFixed(3)}
-                      </span>
-                    </div>
-                  </div>
-                `)
+        const marker = L.marker([event.location.lat, event.location.lng], {
+          icon: this.createCustomIcon(event.type)
+        })
+          .addTo(this.map)
+          .on('click', () => {
+            this.showStoryDetail = true
+            this.selectedStory = event
+          })
               
               this.markers.push({ id: event.id, marker })
             })
@@ -683,29 +650,10 @@ export default {
           icon: this.createCustomIcon(event.type)
         })
           .addTo(this.map)
-          .bindPopup(`
-                  <div style="min-width: 220px; padding: 8px;">
-                    <h4 style="margin: 0 0 8px 0; font-size: 16px; font-weight: 600; color: #1e2022;">${event.title}</h4>
-                    <p style="margin: 0 0 8px 0; font-size: 14px; color: #8a919f; line-height: 1.5;">${event.description}</p>
-                    ${event.user ? `
-                      <div style="margin-bottom: 8px; padding: 4px 0; border-bottom: 1px solid #f1f1f2;">
-                        <div style="display: flex; align-items: center; gap: 6px;">
-                          <div style="width: 24px; height: 24px; border-radius: 50%; background: #f1f1f2; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: bold;">
-                            ${(event.user.display_name || event.user.email).charAt(0).toUpperCase()}
-                          </div>
-                          <span style="font-size: 12px; color: #667eea; font-weight: 500;">
-                            ${event.user.display_name || event.user.email}
-                          </span>
-                        </div>
-                      </div>
-                    ` : ''}
-                    <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #f1f1f2;">
-                      <span style="font-size: 12px; color: #8a919f;">
-                        🕒 ${this.formatDate(event.created_at)}
-                      </span>
-                    </div>
-                  </div>
-          `)
+          .on('click', () => {
+            this.showStoryDetail = true
+            this.selectedStory = event
+          })
         
         this.markers.push({ id: event.id, marker })
       }
@@ -770,6 +718,32 @@ export default {
         }
       })
       this.markers = []
+    },
+    
+    handleDeleteStory(eventId) {
+      this.showStoryDetail = false
+      this.deleteEvent(eventId)
+    },
+    
+    handleEditStory(story) {
+      this.showStoryDetail = false
+      // 可以添加编辑逻辑
+      console.log('编辑故事:', story)
+    },
+    
+    generateMockImage(event) {
+      // 根据故事类型生成不同的模拟图片
+      const seedMap = {
+        event: ['cafe', 'street', 'park'],
+        news: ['city', 'building', 'office'],
+        other: ['nature', 'landscape', 'abstract']
+      }
+      
+      const type = event.type || 'other'
+      const seeds = seedMap[type] || seedMap.other
+      const seed = seeds[Math.floor(Math.random() * seeds.length)]
+      
+      return `https://picsum.photos/600/400?random=${event.id}${seed}`
     }
   }
 }
@@ -1330,5 +1304,19 @@ export default {
     padding: 0.6rem 1rem;
     font-size: 0.8rem;
   }
+}
+
+/* 故事详情模态框样式 */
+.story-detail-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 4000;
 }
 </style>
