@@ -32,11 +32,10 @@
           <div class="form-group">
             <label for="eventType">事件类型</label>
             <select id="eventType" v-model="newEvent.type" required>
-              <option value="">请选择类型</option>
-              <option value="accident">事故</option>
-              <option value="event">活动</option>
-              <option value="news">新闻</option>
-              <option value="other">其他</option>
+              <option value="accident">🚗 事故</option>
+              <option value="event">🎉 活动</option>
+              <option value="news">📰 新闻</option>
+              <option value="other">📍 其他</option>
             </select>
           </div>
           
@@ -108,7 +107,7 @@
 <script>
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
-import { dbService } from '../utils/database.js'
+import { dbServiceSimple } from '../utils/database-simple.js'
 import { isCloudConfigured } from '../supabase.js'
 
 export default {
@@ -136,7 +135,7 @@ export default {
       newEvent: {
         title: '',
         description: '',
-        type: ''
+        type: 'event'
       },
     }
   },
@@ -304,7 +303,7 @@ export default {
         user_id: this.user.id
       }
       
-      const savedEvent = await dbService.addEvent(event)
+      const savedEvent = await dbServiceSimple.addEvent(event)
       if (!savedEvent) {
         alert('保存失败，请检查网络连接')
         return
@@ -350,7 +349,7 @@ export default {
     },
     
     async deleteEvent(eventId) {
-      const success = await dbService.deleteEvent(eventId)
+      const success = await dbServiceSimple.deleteEvent(eventId)
       if (!success) {
         alert('删除失败，请检查网络连接')
         return
@@ -459,7 +458,12 @@ export default {
     },
     
     createCustomIcon(type) {
-      const iconConfig = this.getMapPinIcon(type)
+      // 所有事件都使用相同的可爱小女孩图标配置
+      const iconConfig = {
+        emoji: '👧',
+        color: '#ff69b4',
+        backgroundColor: '#ffe4e1'
+      }
       
       return L.divIcon({
         html: `
@@ -592,7 +596,7 @@ export default {
     async loadEvents() {
       try {
         if (isCloudConfigured) {
-          this.events = await dbService.getAllEvents()
+          this.events = await dbServiceSimple.getAllEvents()
           console.log('加载的事件数据:', this.events)
           
           if (this.map) {
@@ -619,7 +623,7 @@ export default {
                     ` : ''}
                     <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #f1f1f2;">
                       <span style="font-size: 12px; color: #8a919f;">
-                        🕒 ${this.formatDate(event.created_at)}
+                        🕒 ${this.formatDate(event.timestamp || event.created_at)}
                       </span>
                       <span style="font-size: 12px; color: #8a919f; margin-left: 8px;">
                         📍 ${event.location.lat.toFixed(3)}, ${event.location.lng.toFixed(3)}
@@ -643,10 +647,10 @@ export default {
     
     setupRealtimeSync() {
       if (this.subscription) {
-        dbService.unsubscribe(this.subscription)
+        dbServiceSimple.unsubscribe(this.subscription)
       }
       
-      this.subscription = dbService.subscribeToEvents((payload) => {
+      this.subscription = dbServiceSimple.subscribeToEvents((payload) => {
         const { eventType, new: newRecord, old: oldRecord } = payload
         
         switch (eventType) {
@@ -725,7 +729,7 @@ export default {
                 ` : ''}
                 <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #f1f1f2;">
                   <span style="font-size: 12px; color: #8a919f;">
-                    🕒 ${this.formatDate(newRecord.created_at)}
+                    🕒 ${this.formatDate(newRecord.timestamp || newRecord.created_at)}
                   </span>
                 </div>
               </div>

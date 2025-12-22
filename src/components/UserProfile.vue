@@ -70,6 +70,9 @@
     </div>
     
     <div class="profile-actions">
+      <button @click="$emit('close')" class="close-btn">
+        ✖️ 关闭
+      </button>
       <button @click="handleLogout" class="logout-btn">
         🚪 退出登录
       </button>
@@ -93,7 +96,7 @@ export default {
     }
   },
   
-  emits: ['logout'],
+  emits: ['logout', 'close'],
   
   computed: {
     userInitials() {
@@ -122,7 +125,7 @@ export default {
     
     userEvents() {
       return this.events.filter(event => event.user_id === this.user.id)
-        .sort((a, b) => new Date(b.created_at || b.timestamp) - new Date(a.created_at || a.timestamp))
+        .sort((a, b) => new Date(b.timestamp || b.created_at) - new Date(a.timestamp || a.created_at))
     }
   },
   
@@ -244,8 +247,33 @@ export default {
   color: #666;
 }
 
+
+
+/* 操作按钮样式 */
+.profile-actions {
+  display: flex;
+  gap: 0.8rem;
+  margin-top: 1.5rem;
+}
+
+.close-btn {
+  flex: 1;
+  padding: 0.75rem;
+  background: #6c757d;
+  color: white;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 1rem;
+  transition: background 0.3s;
+}
+
+.close-btn:hover {
+  background: #5a6268;
+}
+
 .logout-btn {
-  width: 100%;
+  flex: 1;
   padding: 0.75rem;
   background: #ff6b6b;
   color: white;

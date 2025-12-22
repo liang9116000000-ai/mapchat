@@ -1,52 +1,51 @@
 <template>
   <div class="app">
-    <header class="header">
-      <div class="header-content">
-        <div class="header-left">
-          <h1>📍 我们的故事</h1>
-          <p>点击地图任意位置添加故事记录</p>
-        </div>
-        
-        <div class="header-right">
-        <div v-if="user" class="user-info">
-          <span>欢迎，{{ user.display_name || user.email }}</span>
-          <button @click="showProfile = true" class="profile-btn">👤</button>
-        </div>
-          <button v-else @click="showLogin = true" class="login-btn">
-            🔐 登录/注册
-          </button>
-        </div>
-      </div>
-    </header>
+    <!-- 登录按钮 - 当用户未登录时显示 -->
+    <div v-if="!user" class="login-container">
+      <button @click="showLogin = true" class="login-btn">
+        🔐 登录/注册
+      </button>
+    </div>
+    
+    <!-- 用户信息按钮 - 当用户已登录时显示 -->
+    <div v-else class="user-container">
+      <button @click="showProfile = true" class="profile-btn">
+        👤 {{ user.display_name || user.email }}
+      </button>
+    </div>
     
     <main class="main">
       <SimpleInteractiveMap ref="mapComponent" :user="user" @update-events="updateEvents" />
     </main>
-    
-    <!-- 登录模态框 -->
+  </div>
+  
+  <!-- 登录模态框 - 移到app容器外 -->
+  <Teleport to="body">
     <div v-if="showLogin" class="modal-overlay" @click="showLogin = false">
       <div class="modal" @click.stop>
-        <Login @login-success="handleLoginSuccess" />
+        <Login @login-success="handleLoginSuccess" @close="showLogin = false" />
       </div>
     </div>
     
-    <!-- 用户资料模态框 -->
+    <!-- 用户资料模态框 - 移到app容器外 -->
     <div v-if="showProfile" class="modal-overlay" @click="showProfile = false">
       <div class="modal" @click.stop>
         <UserProfile 
           :user="user" 
           :events="events" 
           @logout="handleLogout" 
+          @close="showProfile = false"
           @focus-event="handleFocusEvent"
           @delete-event="handleDeleteEvent"
         />
       </div>
     </div>
-  </div>
+  </Teleport>
 </template>
 
 <script>
 import { supabase } from './supabase.js'
+import { dbServiceSimple } from './utils/database-simple.js'
 import SimpleInteractiveMap from './components/SimpleInteractiveMap.vue'
 import Login from './components/Login.vue'
 import UserProfile from './components/UserProfile.vue'
@@ -91,14 +90,9 @@ export default {
   
   methods: {
     async fetchUserProfile(userId) {
-      const { data, error } = await supabase
-        .from('users')
-        .select('*')
-        .eq('id', userId)
-        .single()
-        
-      if (!error && data) {
-        this.user = { ...this.user, ...data }
+      const userData = await dbServiceSimple.getUserProfile(userId)
+      if (userData) {
+        this.user = { ...this.user, ...userData }
       }
     },
     
@@ -143,71 +137,15 @@ export default {
   height: 100vh;
   display: flex;
   flex-direction: column;
-}
-
-.header {
-  background: #ffffff;
-  color: #1e2022;
-  padding: 1.2rem 2rem;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-  border-bottom: 1px solid #f1f1f2;
   position: relative;
+}
+
+/* 登录和用户按钮容器 */
+.login-container, .user-container {
+  position: absolute;
+  top: 20px;
+  left: 20px;
   z-index: 1000;
-}
-
-.header-content {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  max-width: 1200px;
-  margin: 0 auto;
-}
-
-.header-left {
-  text-align: left;
-}
-
-.header-left h1 {
-  font-size: 1.6rem;
-  margin-bottom: 0.3rem;
-  font-weight: 600;
-  color: #1e2022;
-}
-
-.header-left p {
-  color: #8a919f;
-  font-size: 0.9rem;
-  font-weight: 400;
-}
-
-.header-right {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-}
-
-.user-info {
-  display: flex;
-  align-items: center;
-  gap: 0.8rem;
-  color: #1e2022;
-  font-weight: 500;
-}
-
-.profile-btn {
-  background: #f1f1f2;
-  border: 1px solid #e1e2e3;
-  color: #1e2022;
-  padding: 0.5rem 0.8rem;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 1rem;
-  transition: all 0.2s ease;
-}
-
-.profile-btn:hover {
-  background: #e8e8e9;
-  transform: translateY(-1px);
 }
 
 .login-btn {
@@ -223,12 +161,35 @@ export default {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
 .login-btn:hover {
   background: #0958d9;
   transform: translateY(-1px);
-  box-shadow: 0 2px 8px rgba(17, 113, 238, 0.2);
+  box-shadow: 0 4px 12px rgba(17, 113, 238, 0.3);
+}
+
+.profile-btn {
+  background: #ffffff;
+  border: 1px solid #e1e2e3;
+  color: #1e2022;
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  white-space: nowrap;
+}
+
+.profile-btn:hover {
+  background: #f8f9fa;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
 .modal-overlay {
@@ -241,7 +202,7 @@ export default {
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 2000;
+  z-index: 3000;
   animation: fadeIn 0.2s ease;
 }
 
@@ -251,13 +212,29 @@ export default {
 }
 
 .modal {
-  background: #ffffff;
+  background: transparent;
   border-radius: 10px;
-  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+  box-shadow: none;
   max-width: 90%;
   max-height: 90vh;
   overflow-y: auto;
   animation: slideUp 0.2s ease;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+/* 为模态框内的Login组件调整样式 */
+.modal .login-container {
+  min-height: auto;
+  background: none;
+  padding: 0;
+  width: 100%;
+}
+
+.modal .login-form {
+  box-shadow: none;
+  margin: 0;
 }
 
 @keyframes slideUp {
@@ -280,17 +257,14 @@ export default {
 }
 
 @media (max-width: 768px) {
-  .header {
-    padding: 1rem;
+  .login-container, .user-container {
+    top: 10px;
+    left: 10px;
   }
   
-  .header-content {
-    flex-direction: column;
-    gap: 1rem;
-  }
-  
-  .header-left {
-    text-align: center;
+  .login-btn, .profile-btn {
+    padding: 0.6rem 1rem;
+    font-size: 0.85rem;
   }
 }
 </style>

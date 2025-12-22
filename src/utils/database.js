@@ -53,14 +53,14 @@ export class DatabaseService {
         .from(TABLES.EVENTS)
         .select(`
           *,
-          user:users(
+          user:auth.users!inner(
             id,
             email,
-            display_name,
-            avatar_url
+            raw_user_meta_data->>'display_name'::text as display_name,
+            raw_user_meta_data->>'avatar_url'::text as avatar_url
           )
         `)
-        .order('created_at', { ascending: false })
+        .order('timestamp', { ascending: false })
       
       if (error) {
         console.log('获取事件失败，可能是表不存在:', error)
@@ -80,15 +80,15 @@ export class DatabaseService {
         .from(TABLES.EVENTS)
         .select(`
           *,
-          user:users(
+          user:auth.users(
             id,
             email,
-            display_name,
-            avatar_url
+            raw_user_meta_data->>'display_name' as display_name,
+            raw_user_meta_data->>'avatar_url' as avatar_url
           )
         `)
         .eq('user_id', userId)
-        .order('created_at', { ascending: false })
+        .order('timestamp', { ascending: false })
       
       if (error) {
         console.log('获取用户事件失败:', error)
@@ -108,11 +108,11 @@ export class DatabaseService {
         .from(TABLES.EVENTS)
         .select(`
           *,
-          user:users(
+          user:auth.users(
             id,
             email,
-            display_name,
-            avatar_url
+            raw_user_meta_data->>'display_name' as display_name,
+            raw_user_meta_data->>'avatar_url' as avatar_url
           )
         `)
         .eq('id', eventId)
@@ -132,7 +132,14 @@ export class DatabaseService {
       // 首先插入事件数据
       const { data, error } = await supabase
         .from(TABLES.EVENTS)
-        .insert([eventData])
+        .insert([{
+          title: eventData.title,
+          description: eventData.description,
+          type: eventData.type,
+          location: eventData.location,
+          user_id: eventData.user_id,
+          timestamp: new Date().toISOString()
+        }])
         .select()
       
       if (error) throw error

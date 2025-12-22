@@ -1,6 +1,7 @@
 <template>
   <div class="login-container">
     <div class="login-form">
+      <button class="close-btn" @click="$emit('close')">✖️</button>
       <h2>{{ isLogin ? '登录' : '注册' }}</h2>
       
       <form @submit.prevent="handleSubmit">
@@ -62,7 +63,7 @@ import { supabase } from '../supabase.js'
 
 export default {
   name: 'Login',
-  emits: ['login-success'],
+  emits: ['login-success', 'close'],
   
   data() {
     return {
@@ -160,6 +161,25 @@ export default {
   box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
   width: 100%;
   max-width: 400px;
+  position: relative;
+}
+
+.close-btn {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  background: none;
+  border: none;
+  font-size: 1.2rem;
+  color: #999;
+  cursor: pointer;
+  transition: color 0.2s ease;
+  padding: 0.2rem;
+  line-height: 1;
+}
+
+.close-btn:hover {
+  color: #666;
 }
 
 .login-form h2 {
