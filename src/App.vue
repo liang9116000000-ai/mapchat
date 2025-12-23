@@ -10,7 +10,7 @@
     <!-- 用户信息按钮 - 当用户已登录时显示 -->
     <div v-else class="user-container">
       <button @click="showProfile = true" class="profile-btn">
-        👤 {{ user.display_name || user.email }}
+        👤 {{ getUserDisplayName() }}
       </button>
     </div>
     
@@ -89,6 +89,17 @@ export default {
   },
   
   methods: {
+    getUserDisplayName() {
+      // 优先使用display_name，如果没有则使用邮箱前缀
+      if (this.user?.display_name) {
+        return this.user.display_name
+      }
+      if (this.user?.email) {
+        return this.user.email.split('@')[0]
+      }
+      return '用户'
+    },
+    
     async fetchUserProfile(userId) {
       const userData = await dbServiceSimple.getUserProfile(userId)
       if (userData) {
@@ -216,7 +227,7 @@ export default {
   background: transparent;
   border-radius: 10px;
   box-shadow: none;
-  max-width: 90%;
+  max-width: 95%;  /* 从90%增加到95% */
   max-height: 90vh;
   overflow-y: auto;
   animation: slideUp 0.2s ease;

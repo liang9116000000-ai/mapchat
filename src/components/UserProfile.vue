@@ -163,15 +163,20 @@ export default {
     formatDate(timestamp) {
       const date = new Date(timestamp)
       const now = new Date()
-      const diffTime = Math.abs(now - date)
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
       
-      if (diffDays === 1) {
+      // 重置时间为0点，只比较日期
+      const dateOnly = new Date(date.getFullYear(), date.getMonth(), date.getDate())
+      const nowOnly = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+      
+      const diffTime = nowOnly - dateOnly
+      const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24))
+      
+      if (diffDays === 0) {
         return '今天'
-      } else if (diffDays === 2) {
+      } else if (diffDays === 1) {
         return '昨天'
       } else if (diffDays <= 7) {
-        return `${diffDays - 1}天前`
+        return `${diffDays}天前`
       } else {
         return date.toLocaleDateString('zh-CN')
       }
@@ -190,6 +195,8 @@ export default {
   border-radius: 10px;
   padding: 1.5rem;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+  min-width: 600px;  /* 添加最小宽度 */
+  max-width: 95%;  /* 添加最大宽度 */
 }
 
 .profile-header {

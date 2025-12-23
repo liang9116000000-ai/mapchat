@@ -176,6 +176,8 @@
           </div>
         </div>
 
+
+
         <!-- 附近群聊 -->
         <div class="chat-section" v-if="!showChatRoom">
           <h4>附近群聊</h4>
@@ -211,12 +213,12 @@
             <div class="chat-messages" ref="chatMessages">
               <div v-for="message in chatMessages" :key="message.id" class="message-item">
                 <div class="message-avatar" :style="{ background: getAvatarColor(message.user?.display_name || '匿名') }">
-                  <img v-if="message.user?.avatar_url" :src="message.user.avatar_url" />
-                  <span v-else>{{ (message.user?.display_name || '匿名').charAt(0) }}</span>
+                  <img v-if="message.user_avatar" :src="message.user_avatar" />
+                  <span v-else>{{ (message.user_name || '匿名').charAt(0) }}</span>
                 </div>
                 <div class="message-content">
                   <div class="message-user">
-                    {{ message.user?.display_name || '匿名用户' }}
+                    {{ message.user_name || '匿名用户' }}
                     <span class="message-time">{{ formatChatTime(message.created_at) }}</span>
                   </div>
                   <div class="message-text">{{ message.content }}</div>
@@ -260,6 +262,8 @@
 </template>
 
 <script>
+import { dbServiceSimple } from '../utils/database-simple.js'
+
 export default {
   name: 'StoryDetail',
   props: {
@@ -289,7 +293,8 @@ export default {
       selectedGroup: null,
       chatMessages: [],
       newChatMessage: '',
-      showChatRoom: false
+      showChatRoom: false,
+      messageSubscription: null
     }
   },
   
@@ -304,6 +309,13 @@ export default {
     
     // 加载附近群组
     await this.loadNearbyGroups()
+  },
+  
+  beforeUnmount() {
+    // 组件卸载时取消订阅
+    if (this.messageSubscription) {
+      dbServiceSimple.unsubscribe(this.messageSubscription)
+    }
   },
   
   computed: {
@@ -562,13 +574,26 @@ export default {
       
       return null
     },
+
+    // ==================== 聊天相关方法 ====================
     
     async loadNearbyGroups() {
       try {
-        // 模拟加载附近群组
-        this.nearbyGroups = this.generateMockGroups()
+        if (this.story?.location) {
+          this.nearbyGroups = await dbServiceSimple.getNearbyGroups(
+            this.story.location.lat,
+            this.story.location.lng
+          )
+        } else {
+          // 如果没有位置信息，使用模拟数据
+          this.nearbyGroups = this.generateMockGroups()
+        }
+        
+        // 检查当前用户已加入的群组
+        await this.checkJoinedGroups()
       } catch (error) {
         console.error('加载附近群组失败:', error)
+        this.nearbyGroups = this.generateMockGroups() // 备用模拟数据
       }
     },
     
@@ -613,14 +638,49 @@ export default {
       ]
     },
     
-    joinGroup(group) {
-      group.joined = !group.joined
-      if (group.joined) {
-        group.memberCount += 1
-        console.log('加入群组:', group.name)
-      } else {
-        group.memberCount -= 1
-        console.log('退出群组:', group.name)
+    async joinGroup(group) {
+      if (!this.currentUser) {
+        alert('请先登录后再加入群组')
+        return
+      }
+      
+      try {
+        if (!group.joined) {
+          // 加入群组
+          await dbServiceSimple.joinGroup(group.id, this.currentUser.id)
+          group.joined = true
+          group.memberCount += 1
+          console.log('加入群组:', group.name)
+        } else {
+          // 退出群组
+          await dbServiceSimple.leaveGroup(group.id, this.currentUser.id)
+          group.joined = false
+          group.memberCount -= 1
+          console.log('退出群组:', group.name)
+        }
+      } catch (error) {
+        console.error('群组操作失败:', error)
+        alert('操作失败，请重试')
+      }
+    },
+    
+    async checkJoinedGroups() {
+      if (!this.currentUser) return
+      
+      try {
+        // 检查每个群组的加入状态
+        const groupIds = this.nearbyGroups.map(g => g.id)
+        const joinedGroupIds = await dbServiceSimple.checkUserGroupMembership(
+          this.currentUser.id,
+          groupIds
+        )
+        
+        // 更新群组的加入状态
+        this.nearbyGroups.forEach(group => {
+          group.joined = joinedGroupIds.includes(group.id)
+        })
+      } catch (error) {
+        console.error('检查群组状态失败:', error)
       }
     },
     
@@ -641,12 +701,61 @@ export default {
       this.selectedGroup = null
       this.chatMessages = []
       this.newChatMessage = ''
+      
+      // 取消消息订阅
+      if (this.messageSubscription) {
+        dbServiceSimple.unsubscribe(this.messageSubscription)
+        this.messageSubscription = null
+      }
     },
     
-    loadGroupChatMessages(group) {
-      // 模拟加载群组聊天消息
-      this.chatMessages = this.generateMockGroupMessages(group)
-      this.scrollToBottom()
+    async loadGroupChatMessages(group) {
+      try {
+        // 从数据库加载真实消息
+        this.chatMessages = await dbServiceSimple.getGroupMessages(group.id)
+        
+        // 如果没有消息，添加欢迎消息
+        if (this.chatMessages.length === 0) {
+          this.chatMessages = [{
+            id: 'welcome',
+            user_name: '系统',
+            user_avatar: null,
+            content: `欢迎加入${group.name}！开始聊天吧～`,
+            created_at: new Date().toISOString(),
+            isSystem: true
+          }]
+        }
+        
+        this.scrollToBottom()
+        
+        // 订阅实时消息
+        this.subscribeToMessages(group.id)
+      } catch (error) {
+        console.error('加载群组消息失败:', error)
+        // 备用模拟数据
+        this.chatMessages = this.generateMockGroupMessages(group)
+        this.scrollToBottom()
+      }
+    },
+    
+    subscribeToMessages(groupId) {
+      // 取消之前的订阅
+      if (this.messageSubscription) {
+        dbServiceSimple.unsubscribe(this.messageSubscription)
+      }
+      
+      // 订阅新消息
+      this.messageSubscription = dbServiceSimple.subscribeToGroupMessages(groupId, (payload) => {
+        if (payload.eventType === 'INSERT') {
+          const newMessage = payload.new
+          // 避免重复添加自己发送的消息
+          const isOwnMessage = newMessage.user_id === this.currentUser?.id
+          if (!isOwnMessage) {
+            this.chatMessages.push(newMessage)
+            this.scrollToBottom()
+          }
+        }
+      })
     },
     
     generateMockGroupMessages(group) {
@@ -676,26 +785,43 @@ export default {
     async sendChatMessage() {
       if (!this.newChatMessage.trim() || !this.currentUser) return
       
-      const message = {
-        id: Date.now(),
-        user: {
-          display_name: this.currentUser.display_name || '我',
-          avatar_url: this.currentUser.avatar_url
-        },
-        content: this.newChatMessage.trim(),
-        created_at: new Date().toISOString()
+      try {
+        // 发送到数据库
+        const message = await dbServiceSimple.sendSimpleGroupMessage(
+          this.selectedGroup.id,
+          this.currentUser.id,
+          this.currentUser.display_name || '用户',
+          this.currentUser.avatar_url,
+          this.newChatMessage.trim()
+        )
+        
+        if (message) {
+          this.chatMessages.push(message)
+          this.newChatMessage = ''
+          this.scrollToBottom()
+          
+          // 更新群组最后活动时间
+          if (this.selectedGroup) {
+            this.selectedGroup.lastActivity = '刚刚'
+          }
+        }
+      } catch (error) {
+        console.error('发送消息失败:', error)
+        // 备用本地添加
+        const localMessage = {
+          id: Date.now(),
+          user: {
+            display_name: this.currentUser.display_name || '我',
+            avatar_url: this.currentUser.avatar_url
+          },
+          content: this.newChatMessage.trim(),
+          created_at: new Date().toISOString()
+        }
+        
+        this.chatMessages.push(localMessage)
+        this.newChatMessage = ''
+        this.scrollToBottom()
       }
-      
-      this.chatMessages.push(message)
-      this.newChatMessage = ''
-      this.scrollToBottom()
-      
-      // 更新群组最后活动时间
-      if (this.selectedGroup) {
-        this.selectedGroup.lastActivity = '刚刚'
-      }
-      
-      console.log('发送群组消息:', message)
     },
     
     scrollToBottom() {
@@ -1603,6 +1729,12 @@ export default {
 
 
 
+
+
+
+
+
+
 /* 滚动条样式 */
 .content-area::-webkit-scrollbar,
 .sidebar::-webkit-scrollbar {
@@ -1623,5 +1755,251 @@ export default {
 .content-area::-webkit-scrollbar-thumb:hover,
 .sidebar::-webkit-scrollbar-thumb:hover {
   background: #999;
+}
+
+/* 群组区域 */
+.groups-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.group-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  background: #fff;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.group-item:hover {
+  background: #f8f8f8;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.group-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  background: #f0f0f0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  font-weight: bold;
+  color: white;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.group-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.group-info {
+  flex: 1;
+}
+
+.group-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 2px;
+}
+
+.group-desc {
+  font-size: 12px;
+  color: #666;
+  margin-bottom: 4px;
+}
+
+.group-stats {
+  display: flex;
+  gap: 8px;
+}
+
+.member-count {
+  font-size: 11px;
+  color: #999;
+}
+
+.activity {
+  font-size: 11px;
+  color: #999;
+}
+
+.join-btn {
+  padding: 6px 12px;
+  background: #667eea;
+  color: white;
+  border: none;
+  border-radius: 16px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.2s ease;
+  flex-shrink: 0;
+}
+
+.join-btn:hover {
+  background: #5a67d8;
+}
+
+.join-btn.joined {
+  background: #f0f0f0;
+  color: #666;
+}
+
+.join-btn.joined:hover {
+  background: #e0e0e0;
+}
+
+/* 聊天室头部 */
+.chat-room-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid #e0e0e0;
+  margin-bottom: 12px;
+}
+
+.back-btn {
+  background: none;
+  border: none;
+  color: #667eea;
+  font-size: 14px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: background 0.2s ease;
+}
+
+.back-btn:hover {
+  background: #f0f0f0;
+}
+
+.chat-room-header h4 {
+  flex: 1;
+  font-size: 16px;
+  font-weight: 600;
+  color: #333;
+  margin: 0;
+}
+
+.group-member-count {
+  font-size: 12px;
+  color: #999;
+}
+
+/* 聊天区域 */
+.chat-container {
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.chat-messages {
+  height: 200px;
+  overflow-y: auto;
+  padding: 12px;
+  background: #fff;
+}
+
+.message-item {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.message-avatar {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #f0f0f0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: bold;
+  color: white;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.message-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+}
+
+.message-content {
+  flex: 1;
+}
+
+.message-user {
+  font-size: 11px;
+  color: #666;
+  margin-bottom: 2px;
+}
+
+.message-time {
+  font-size: 10px;
+  color: #999;
+  margin-left: 4px;
+}
+
+.message-text {
+  font-size: 12px;
+  color: #333;
+  line-height: 1.4;
+}
+
+.chat-input {
+  display: flex;
+  gap: 8px;
+  padding: 12px;
+  background: #f8f8f8;
+  border-top: 1px solid #e0e0e0;
+}
+
+.chat-input-field {
+  flex: 1;
+  padding: 8px 12px;
+  border: 1px solid #e0e0e0;
+  border-radius: 16px;
+  font-size: 12px;
+  outline: none;
+}
+
+.chat-input-field:focus {
+  border-color: #667eea;
+}
+
+.send-btn {
+  padding: 6px 16px;
+  background: #667eea;
+  color: white;
+  border: none;
+  border-radius: 16px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.send-btn:hover:not(:disabled) {
+  background: #5a67d8;
+}
+
+.send-btn:disabled {
+  background: #ccc;
+  cursor: not-allowed;
 }
 </style>

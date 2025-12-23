@@ -10,7 +10,10 @@ export const isCloudConfigured = true
 // 数据库表名
 export const TABLES = {
   EVENTS: 'map_events',
-  USERS: 'users'
+  USERS: 'users',
+  GROUPS: 'chat_groups',
+  MESSAGES: 'chat_messages',
+  GROUP_MEMBERS: 'group_members'
 }
 
 // 事件类型枚举
