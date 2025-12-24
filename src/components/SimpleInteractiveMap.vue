@@ -231,7 +231,6 @@ export default {
       switchingView: false,
       is3DView: false,
       loading: false,
-      user: null,
       newEvent: {
         title: '',
         description: '',
@@ -255,7 +254,6 @@ export default {
     this.$nextTick(() => {
       this.initMap()
       this.loadEvents()
-      this.loadCurrentUser()
     })
   },
 
@@ -569,18 +567,6 @@ export default {
       this.selectedLocationLng = null
       if (this.$refs.fileInput) {
         this.$refs.fileInput.value = ''
-      }
-    },
-
-    async loadCurrentUser() {
-      try {
-        const { data: { user } } = await supabase.auth.getUser()
-        if (user) {
-          const userProfile = await dbServiceSimple.getUserProfile(user.id)
-          this.user = userProfile
-        }
-      } catch (error) {
-        console.error('加载用户信息失败:', error)
       }
     },
     

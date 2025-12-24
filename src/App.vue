@@ -69,22 +69,41 @@ export default {
   },
   
   async mounted() {
-    // 检查当前登录状态
-    const { data: { user } } = await supabase.auth.getUser()
-    if (user) {
-      this.user = user
-      await this.fetchUserProfile(user.id)
+    // 先检查当前登录状态
+    const { data: { session } } = await supabase.auth.getSession()
+    console.log('初始 session:', session)
+    
+    if (session?.user) {
+      this.user = session.user
+      await this.fetchUserProfile(session.user.id)
+      console.log('初始化后的 user:', this.user)
     }
     
     // 监听认证状态变化
     supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log('认证状态变化:', event, session?.user?.id)
+      
+      // 跳过 INITIAL_SESSION，因为上面已经处理过了
+      if (event === 'INITIAL_SESSION') {
+        return
+      }
+      
       if (event === 'SIGNED_IN' && session) {
+        // 保留已有的 display_name
+        const currentDisplayName = this.user?.display_name
         this.user = session.user
-        await this.fetchUserProfile(session.user.id)
+        if (currentDisplayName) {
+          this.user.display_name = currentDisplayName
+        } else {
+          await this.fetchUserProfile(session.user.id)
+        }
         this.showLogin = false
       } else if (event === 'SIGNED_OUT') {
         this.user = null
         this.showProfile = false
+      } else if (event === 'TOKEN_REFRESHED' && session) {
+        const currentDisplayName = this.user?.display_name
+        this.user = { ...session.user, display_name: currentDisplayName }
       }
     })
   },
