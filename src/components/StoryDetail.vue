@@ -116,6 +116,12 @@
 
           <!-- 评论列表 -->
           <div v-else class="comments-list">
+            <!-- 无评论提示 -->
+            <div v-if="comments.length === 0" class="no-comments">
+              <span>📝</span>
+              <p>暂无评论，快来发表第一条评论吧~</p>
+            </div>
+            
             <div v-for="comment in sortedComments" :key="comment.id" class="comment-item">
               <div class="comment-avatar">
                 <img v-if="comment.user?.avatar_url" :src="comment.user.avatar_url" />
@@ -1556,6 +1562,23 @@ export default {
   background: white;
   font-size: 14px;
   color: #666;
+}
+
+.no-comments {
+  text-align: center;
+  padding: 40px 20px;
+  color: #999;
+}
+
+.no-comments span {
+  font-size: 40px;
+  display: block;
+  margin-bottom: 10px;
+}
+
+.no-comments p {
+  margin: 0;
+  font-size: 14px;
 }
 
 .comment-item {

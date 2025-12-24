@@ -3,6 +3,43 @@ import { supabase, TABLES } from '../supabase.js'
 // 简化的数据库操作工具类
 export class DatabaseServiceSimple {
   
+  // 上传图片到 Supabase Storage
+  async uploadImage(file, userId) {
+    try {
+      // 生成唯一文件名
+      const fileExt = file.name.split('.').pop()
+      const fileName = `${userId || 'anonymous'}_${Date.now()}.${fileExt}`
+      const filePath = `story-images/${fileName}`
+      
+      console.log('开始上传图片:', filePath)
+      
+      // 上传到 Supabase Storage
+      const { data, error } = await supabase.storage
+        .from('images')
+        .upload(filePath, file, {
+          cacheControl: '3600',
+          upsert: false
+        })
+      
+      if (error) {
+        console.error('上传图片失败:', error)
+        throw error
+      }
+      
+      // 获取公开访问 URL
+      const { data: urlData } = supabase.storage
+        .from('images')
+        .getPublicUrl(filePath)
+      
+      console.log('图片上传成功，URL:', urlData.publicUrl)
+      return urlData.publicUrl
+      
+    } catch (error) {
+      console.error('上传图片失败:', error)
+      return null
+    }
+  }
+  
   // 获取所有事件（简单版本）
   async getAllEvents() {
     try {

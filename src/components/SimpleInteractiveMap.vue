@@ -58,13 +58,30 @@
           </div>
           
           <div class="form-group">
-            <label for="eventImage">图片链接 (可选)</label>
-            <input 
-              id="eventImage"
-              v-model="newEvent.image" 
-              type="url" 
-              placeholder="https://example.com/image.jpg" 
-            />
+            <label>上传图片 (可选)</label>
+            <div class="image-upload-area">
+              <!-- 图片预览 -->
+              <div v-if="imagePreview" class="image-preview">
+                <img :src="imagePreview" alt="预览图片" />
+                <button type="button" class="remove-image-btn" @click="removeImage">×</button>
+              </div>
+              <!-- 上传按钮 -->
+              <div v-else class="upload-placeholder" @click="triggerFileInput">
+                <span class="upload-icon">📷</span>
+                <span class="upload-text">点击上传图片</span>
+                <span class="upload-hint">支持 JPG、PNG、GIF，最大 5MB</span>
+              </div>
+              <input 
+                ref="fileInput"
+                type="file" 
+                accept="image/jpeg,image/png,image/gif"
+                @change="handleImageUpload"
+                style="display: none"
+              />
+            </div>
+            <div v-if="uploadingImage" class="upload-progress">
+              <span>上传中...</span>
+            </div>
           </div>
           
           <div class="form-group">
@@ -222,6 +239,8 @@ export default {
         tags: '',
         image: ''
       },
+      imagePreview: null,
+      uploadingImage: false,
       eventTypes: [
         { value: 'story', name: '故事', emoji: '📖' },
         { value: 'event', name: '活动', emoji: '🎉' },
@@ -256,6 +275,59 @@ export default {
   },
   
   methods: {
+    // 触发文件选择
+    triggerFileInput() {
+      this.$refs.fileInput.click()
+    },
+    
+    // 处理图片上传
+    async handleImageUpload(event) {
+      const file = event.target.files[0]
+      if (!file) return
+      
+      // 验证文件类型
+      const allowedTypes = ['image/jpeg', 'image/png', 'image/gif']
+      if (!allowedTypes.includes(file.type)) {
+        alert('只支持 JPG、PNG、GIF 格式的图片')
+        return
+      }
+      
+      // 验证文件大小 (5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        alert('图片大小不能超过 5MB')
+        return
+      }
+      
+      this.uploadingImage = true
+      
+      try {
+        // 上传到 Supabase Storage
+        const imageUrl = await dbServiceSimple.uploadImage(file, this.user?.id)
+        
+        if (imageUrl) {
+          this.newEvent.image = imageUrl
+          this.imagePreview = imageUrl
+          console.log('图片上传成功:', imageUrl)
+        } else {
+          alert('图片上传失败，请重试')
+        }
+      } catch (error) {
+        console.error('图片上传失败:', error)
+        alert('图片上传失败: ' + error.message)
+      } finally {
+        this.uploadingImage = false
+      }
+    },
+    
+    // 移除已上传的图片
+    removeImage() {
+      this.newEvent.image = ''
+      this.imagePreview = null
+      if (this.$refs.fileInput) {
+        this.$refs.fileInput.value = ''
+      }
+    },
+    
     initMap() {
       this.map = L.map('map').setView([39.9042, 116.4074], 10)
       
@@ -413,41 +485,31 @@ export default {
 
         this.events.unshift(eventWithUser)
         this.$emit('update-events', this.events)
-        this.addMarker(eventWithUser)
 
-        // 重置表单
-        this.newEvent = {
-          title: '',
-          description: '',
-          type: 'story',
-          tags: '',
-          image: ''
+        // 在地图上添加标记
+        if (this.map) {
+          const marker = L.marker([savedEvent.location.lat, savedEvent.location.lng], {
+            icon: this.createCustomIcon(savedEvent.type)
+          })
+            .addTo(this.map)
+            .on('click', () => {
+              this.showStoryDetail = true
+              this.selectedStory = eventWithUser
+            })
+          
+          this.markers.push({ id: savedEvent.id, marker })
         }
-        this.selectedLocationLat = null
-        this.selectedLocationLng = null
+
+        // 重置表单并关闭模态框
+        this.resetForm()
         this.showModal = false
+        
       } catch (error) {
         console.error('添加事件失败:', error)
         alert('添加失败，请重试')
       } finally {
         this.loading = false
       }
-      
-      if (this.map) {
-        const marker = L.marker([savedEvent.location.lat, savedEvent.location.lng], {
-          icon: this.createCustomIcon(savedEvent.type)
-        })
-          .addTo(this.map)
-          .on('click', () => {
-            this.showStoryDetail = true
-            this.selectedStory = savedEvent
-          })
-        
-        this.markers.push({ id: savedEvent.id, marker })
-      }
-      
-      this.resetForm()
-      this.showModal = false
     },
     
     async deleteEvent(eventId) {
@@ -502,8 +564,12 @@ export default {
         tags: '',
         image: ''
       }
+      this.imagePreview = null
       this.selectedLocationLat = null
       this.selectedLocationLng = null
+      if (this.$refs.fileInput) {
+        this.$refs.fileInput.value = ''
+      }
     },
 
     async loadCurrentUser() {
@@ -1583,5 +1649,87 @@ export default {
 
 .location-text {
   flex: 1;
+}
+
+/* 图片上传区域 */
+.image-upload-area {
+  margin: 0.5rem 1.5rem 1rem;
+}
+
+.upload-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  border: 2px dashed #e1e2e3;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  background: #f8f8f9;
+}
+
+.upload-placeholder:hover {
+  border-color: #1171ee;
+  background: #f0f7ff;
+}
+
+.upload-icon {
+  font-size: 2rem;
+  margin-bottom: 0.5rem;
+}
+
+.upload-text {
+  font-size: 0.9rem;
+  color: #1e2022;
+  font-weight: 500;
+}
+
+.upload-hint {
+  font-size: 0.75rem;
+  color: #8a919f;
+  margin-top: 0.25rem;
+}
+
+.image-preview {
+  position: relative;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.image-preview img {
+  width: 100%;
+  max-height: 200px;
+  object-fit: cover;
+  border-radius: 8px;
+}
+
+.remove-image-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.6);
+  color: white;
+  border: none;
+  cursor: pointer;
+  font-size: 1.2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.remove-image-btn:hover {
+  background: rgba(255, 0, 0, 0.8);
+}
+
+.upload-progress {
+  text-align: center;
+  padding: 0.5rem;
+  color: #1171ee;
+  font-size: 0.85rem;
 }
 </style>
