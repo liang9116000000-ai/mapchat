@@ -84,9 +84,13 @@
         <!-- 相关推荐 -->
         <div class="recommend-section">
           <h4>相关推荐</h4>
-          <div class="recommend-list">
+          <div v-if="recommendations.length === 0" class="no-recommendations">
+            暂无推荐内容
+          </div>
+          <div v-else class="recommend-list">
             <div v-for="item in recommendations" :key="item.id" class="recommend-item">
-              <img :src="item.image" class="recommend-image" />
+              <img v-if="item.image" :src="item.image" class="recommend-image" />
+              <div v-else class="recommend-image-placeholder">📖</div>
               <div class="recommend-info">
                 <div class="recommend-title">{{ item.title }}</div>
                 <div class="recommend-stats">
@@ -340,7 +344,7 @@ export default {
       commentSort: 'newest',
       comments: [],
       commonEmojis: ['😊', '😍', '🤔', '😂', '❤️', '👍', '🎉', '🔥'],
-      recommendations: this.generateRecommendations(),
+      recommendations: [],
       hotTopics: ['美食探店', '日常穿搭', '旅行日记', '生活记录', '美妆分享', '学习笔记'],
       detailedAddress: '',
       nearbyGroups: [],
@@ -450,6 +454,9 @@ export default {
       console.log('开始加载附近群组...')
       await this.loadNearbyGroups()
       console.log('群组加载完成, 数量:', this.nearbyGroups.length)
+
+      // 加载推荐内容
+      await this.loadRecommendations()
 
       // 订阅评论变化
       if (this.story?.id) {
@@ -789,13 +796,24 @@ export default {
       ]
     },
     
-    generateRecommendations() {
-      return [
-        { id: 1, title: '周末咖啡探店日记', image: 'https://picsum.photos/200/150?random=1', likes: 234, comments: 45 },
-        { id: 2, title: '城市夜景拍摄技巧', image: 'https://picsum.photos/200/150?random=2', likes: 567, comments: 89 },
-        { id: 3, title: '小众旅行地推荐', image: 'https://picsum.photos/200/150?random=3', likes: 189, comments: 34 },
-        { id: 4, title: '日常穿搭分享', image: 'https://picsum.photos/200/150?random=4', likes: 445, comments: 67 }
-      ]
+    async loadRecommendations() {
+      try {
+        // 从数据库获取推荐故事（排除当前故事）
+        const allEvents = await dbServiceSimple.getAllEvents()
+        this.recommendations = allEvents
+          .filter(event => event.id !== this.story?.id)
+          .slice(0, 4)
+          .map(event => ({
+            id: event.id,
+            title: event.title,
+            image: event.image || null,
+            likes: event.likes || 0,
+            comments: event.comments_count || 0
+          }))
+      } catch (error) {
+        console.error('加载推荐内容失败:', error)
+        this.recommendations = []
+      }
     },
     
     getStoryTypeName(type) {
@@ -1934,6 +1952,25 @@ export default {
   border-radius: 8px;
   object-fit: cover;
   flex-shrink: 0;
+}
+
+.recommend-image-placeholder {
+  width: 60px;
+  height: 60px;
+  border-radius: 8px;
+  background: #f0f0f0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  flex-shrink: 0;
+}
+
+.no-recommendations {
+  text-align: center;
+  color: #999;
+  padding: 20px;
+  font-size: 14px;
 }
 
 .recommend-info {

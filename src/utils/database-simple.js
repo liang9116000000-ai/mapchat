@@ -135,6 +135,7 @@ export class DatabaseServiceSimple {
           type: eventData.type || 'other',
           location: eventData.location,
           user_id: eventData.user_id,
+          image: eventData.image || null,
           timestamp: new Date().toISOString()
         }])
         .select()

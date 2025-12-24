@@ -786,12 +786,6 @@ export default {
         if (isCloudConfigured) {
           this.events = await dbServiceSimple.getAllEvents()
 
-          // 为每个故事添加模拟图片
-          this.events = this.events.map(event => ({
-            ...event,
-            image: this.generateMockImage(event)
-          }))
-
           console.log('加载的事件数据:', this.events)
 
           if (this.map) {
@@ -930,21 +924,6 @@ export default {
       this.showStoryDetail = false
       // 可以添加编辑逻辑
       console.log('编辑故事:', story)
-    },
-    
-    generateMockImage(event) {
-      // 根据故事类型生成不同的模拟图片
-      const seedMap = {
-        event: ['cafe', 'street', 'park'],
-        news: ['city', 'building', 'office'],
-        other: ['nature', 'landscape', 'abstract']
-      }
-      
-      const type = event.type || 'other'
-      const seeds = seedMap[type] || seedMap.other
-      const seed = seeds[Math.floor(Math.random() * seeds.length)]
-      
-      return `https://picsum.photos/600/400?random=${event.id}${seed}`
     }
   }
 }
