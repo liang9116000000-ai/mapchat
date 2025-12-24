@@ -7,10 +7,10 @@
         <div class="author-section">
           <div class="author-avatar">
             <img v-if="story.user?.avatar_url" :src="story.user.avatar_url" :alt="story.user?.display_name" />
-            <span v-else>{{ (story.user?.display_name || story.user?.email || '未知').charAt(0).toUpperCase() }}</span>
+            <span v-else>{{ (story.user?.display_name || '匿名').charAt(0).toUpperCase() }}</span>
           </div>
           <div class="author-info">
-            <div class="author-name">{{ story.user?.display_name || story.user?.email || '匿名用户' }}</div>
+            <div class="author-name">{{ story.user?.display_name || '匿名用户' }}</div>
             <div class="post-time">{{ formatTime(story.timestamp || story.created_at) }}</div>
           </div>
           <button class="follow-btn" v-if="!isCurrentUserStory">+ 关注</button>
@@ -108,41 +108,70 @@
             </select>
           </div>
 
+          <!-- 加载状态 -->
+          <div v-if="loading.comments" class="loading-container">
+            <div class="loading-spinner"></div>
+            <span>加载评论中...</span>
+          </div>
+
           <!-- 评论列表 -->
-          <div class="comments-list">
+          <div v-else class="comments-list">
             <div v-for="comment in sortedComments" :key="comment.id" class="comment-item">
               <div class="comment-avatar">
                 <img v-if="comment.user?.avatar_url" :src="comment.user.avatar_url" />
-                <span v-else>{{ (comment.user?.name || '匿名').charAt(0) }}</span>
+                <span v-else>{{ (comment.user?.display_name || '匿名').charAt(0) }}</span>
               </div>
               <div class="comment-content">
                 <div class="comment-user">
-                  {{ comment.user?.name || '匿名用户' }}
+                  {{ comment.user?.display_name || '匿名用户' }}
                   <span class="comment-time">{{ formatCommentTime(comment.created_at) }}</span>
                 </div>
                 <div class="comment-text">{{ comment.content }}</div>
                 <div class="comment-actions">
-                  <button class="comment-action like-comment" @click="likeComment(comment)">
-                    {{ comment.isLiked ? '已赞' : '赞' }} {{ comment.likes || 0 }}
+                  <button
+                    class="comment-action like-comment"
+                    :class="{ 'liked': comment.isLiked }"
+                    @click="likeComment(comment)"
+                    @mousedown="showCommentLikers(comment)"
+                  >
+                    {{ comment.isLiked ? '❤️' : '🤍' }} {{ comment.likes || 0 }}
                   </button>
                   <button class="comment-action reply-comment" @click="replyToComment(comment)">
                     回复
                   </button>
                 </div>
-                
+
+                <!-- 点赞用户列表 -->
+                <div v-if="showLikers === comment.id" class="likers-list">
+                  <div class="likers-header">
+                    <span>点赞用户</span>
+                    <button class="close-likers" @click="hideLikers">×</button>
+                  </div>
+                  <div class="likers-content">
+                    <div v-if="likersList.length === 0" class="no-likers">暂无点赞</div>
+                    <div v-else class="liker-item" v-for="liker in likersList" :key="liker.user_id">
+                      <div class="liker-avatar">
+                        <span>{{ liker.display_name ? liker.display_name.charAt(0).toUpperCase() : '匿' }}</span>
+                      </div>
+                      <span class="liker-name">{{ liker.display_name || '匿名用户' }}</span>
+                      <span class="liker-time">{{ formatCommentTime(liker.created_at) }}</span>
+                    </div>
+                  </div>
+                </div>
+
                 <!-- 子评论 -->
                 <div v-if="comment.replies && comment.replies.length > 0" class="replies-section">
                   <div v-for="reply in comment.replies" :key="reply.id" class="reply-item">
                     <div class="reply-avatar">
                       <img v-if="reply.user?.avatar_url" :src="reply.user.avatar_url" />
-                      <span v-else>{{ (reply.user?.name || '匿名').charAt(0) }}</span>
+                      <span v-else>{{ (reply.user?.display_name || '匿名').charAt(0) }}</span>
                     </div>
                     <div class="reply-content">
                       <div class="reply-user">
-                        {{ reply.user?.name || '匿名用户' }}
+                        {{ reply.user?.display_name || '匿名用户' }}
                         <span class="reply-time">{{ formatCommentTime(reply.created_at) }}</span>
                       </div>
-                      <div class="reply-text">@{{ comment.user?.name }} {{ reply.content }}</div>
+                      <div class="reply-text">@{{ comment.user?.display_name }} {{ reply.content }}</div>
                     </div>
                   </div>
                 </div>
@@ -155,17 +184,21 @@
             <div class="comment-input-wrapper">
               <div class="comment-input-avatar">
                 <img v-if="user?.avatar_url" :src="user.avatar_url" />
-                <span v-else>{{ (user?.display_name || user?.email || '未').charAt(0).toUpperCase() }}</span>
+                <span v-else>{{ (user?.display_name || '我').charAt(0).toUpperCase() }}</span>
               </div>
-              <textarea 
-                class="comment-input" 
+              <textarea
+                class="comment-input"
                 v-model="newComment"
                 placeholder="发表你的评论..."
                 rows="2"
-                @keydown.enter.ctrl="submitComment"
+                @keydown.ctrl.enter="submitComment"
               ></textarea>
-              <button class="submit-comment-btn" @click="submitComment" :disabled="!newComment.trim()">
-                发送
+              <button
+                class="submit-comment-btn"
+                @click="submitComment"
+                :disabled="!newComment.trim() || loading.submittingComment"
+              >
+                {{ loading.submittingComment ? '发送中...' : '发送' }}
               </button>
             </div>
             <div class="emoji-toolbar">
@@ -181,7 +214,14 @@
         <!-- 附近群聊 -->
         <div class="chat-section" v-if="!showChatRoom">
           <h4>附近群聊</h4>
-          <div class="groups-list">
+
+          <!-- 加载状态 -->
+          <div v-if="loading.groups" class="loading-container">
+            <div class="loading-spinner"></div>
+            <span>加载群组中...</span>
+          </div>
+
+          <div v-else class="groups-list">
             <div v-for="group in nearbyGroups" :key="group.id" class="group-item" @click="enterGroupChat(group)">
               <div class="group-avatar" :style="{ background: getGroupAvatarColor(group.name) }">
                 <img v-if="group.avatar" :src="group.avatar" />
@@ -263,6 +303,14 @@
 
 <script>
 import { dbServiceSimple } from '../utils/database-simple.js'
+import { supabase } from '../supabase.js'
+
+// 全局缓存对象
+const DATA_CACHE = {
+  comments: {}, // { storyId: comments }
+  groups: [], // nearby groups
+  groupsTimestamp: 0 // groups cache timestamp
+}
 
 export default {
   name: 'StoryDetail',
@@ -284,7 +332,7 @@ export default {
       isFavorited: false,
       newComment: '',
       commentSort: 'newest',
-      comments: this.generateMockComments(),
+      comments: [],
       commonEmojis: ['😊', '😍', '🤔', '😂', '❤️', '👍', '🎉', '🔥'],
       recommendations: this.generateRecommendations(),
       hotTopics: ['美食探店', '日常穿搭', '旅行日记', '生活记录', '美妆分享', '学习笔记'],
@@ -294,27 +342,50 @@ export default {
       chatMessages: [],
       newChatMessage: '',
       showChatRoom: false,
-      messageSubscription: null
+      messageSubscription: null,
+      commentSubscription: null,
+      showLikers: null, // 显示点赞用户列表的评论ID
+      likersList: [], // 点赞用户列表
+      // 加载状态
+      loading: {
+        comments: false,
+        groups: false,
+        address: false,
+        submittingComment: false
+      }
     }
   },
   
   async mounted() {
-    // 组件挂载时获取详细地址
-    if (this.story?.location) {
-      this.detailedAddress = await this.getDetailedLocation(
-        this.story.location.lat, 
-        this.story.location.lng
-      )
-    }
-    
-    // 加载附近群组
-    await this.loadNearbyGroups()
+    console.log('StoryDetail mounted, story id:', this.story?.id)
+
+    // 初始化数据
+    await this.initializeData()
   },
-  
+
   beforeUnmount() {
-    // 组件卸载时取消订阅
+    console.log('StoryDetail beforeUnmount')
+
+    // 组件卸载时取消订阅并重置状态
     if (this.messageSubscription) {
       dbServiceSimple.unsubscribe(this.messageSubscription)
+      this.messageSubscription = null
+    }
+    if (this.commentSubscription) {
+      dbServiceSimple.unsubscribe(this.commentSubscription)
+      this.commentSubscription = null
+    }
+  },
+
+  watch: {
+    'story.id': {
+      immediate: true,
+      async handler(newId, oldId) {
+        console.log('StoryDetail watch: story.id 变化', { newId, oldId })
+        if (newId && newId !== oldId) {
+          await this.initializeData()
+        }
+      }
     }
   },
   
@@ -338,6 +409,48 @@ export default {
   },
   
   methods: {
+    async initializeData() {
+      console.log('初始化故事详情数据, story id:', this.story?.id, 'type:', typeof this.story?.id)
+
+      // 重置数据状态
+      this.showChatRoom = false
+      this.selectedGroup = null
+      this.chatMessages = []
+
+      // 清除评论缓存，强制从数据库重新加载
+      const cacheKey = String(this.story?.id)
+      console.log('清除缓存 key:', cacheKey)
+      delete DATA_CACHE.comments[cacheKey]
+
+      // 异步加载详细地址
+      if (this.story?.location) {
+        this.loading.address = true
+        try {
+          this.detailedAddress = await this.getDetailedLocation(
+            this.story.location.lat,
+            this.story.location.lng
+          )
+        } finally {
+          this.loading.address = false
+        }
+      }
+
+      // 异步加载评论（强制从数据库）
+      console.log('开始加载评论...')
+      await this.loadComments(true) // 传入 true 强制重新加载
+      console.log('评论加载完成, 数量:', this.comments.length)
+
+      // 异步加载附近群组（使用缓存）
+      console.log('开始加载附近群组...')
+      await this.loadNearbyGroups()
+      console.log('群组加载完成, 数量:', this.nearbyGroups.length)
+
+      // 订阅评论变化
+      if (this.story?.id) {
+        this.subscribeToComments()
+      }
+    },
+
     getTags() {
       // 从标题和描述中提取关键词作为标签
       const tags = []
@@ -378,9 +491,9 @@ export default {
         alert('不能给自己发私信')
         return
       }
-      
+
       // 模拟打开私信界面
-      alert(`正在给 ${this.story.user?.display_name || '该用户'} 发送私信...`)
+      alert(`正在给 ${this.story.user?.display_name || '匿名用户'} 发送私信...`)
       
       // 这里可以扩展为真正的私信功能
       // this.$emit('open-private-message', {
@@ -388,38 +501,242 @@ export default {
       //   story: this.story
       // })
     },
-    
-    likeComment(comment) {
-      comment.isLiked = !comment.isLiked
-      if (comment.isLiked) {
-        comment.likes = (comment.likes || 0) + 1
-      } else {
-        comment.likes = Math.max(0, (comment.likes || 0) - 1)
+
+    async likeComment(comment) {
+      if (!this.currentUser) {
+        alert('请先登录后再点赞')
+        return
       }
+
+      try {
+        let result
+        if (comment.isLiked) {
+          // 取消点赞
+          result = await dbServiceSimple.removeCommentLike(comment.id, this.currentUser.id)
+          if (result) {
+            comment.isLiked = false
+            comment.likes = result.likes
+          }
+        } else {
+          // 添加点赞
+          result = await dbServiceSimple.addCommentLike(comment.id, this.currentUser.id)
+          if (result) {
+            comment.isLiked = true
+            comment.likes = result.likes
+          }
+        }
+      } catch (error) {
+        console.error('点赞失败:', error)
+        alert('操作失败，请重试')
+      }
+    },
+
+    async showCommentLikers(comment) {
+      if (comment.likes === 0) {
+        this.showLikers = null
+        this.likersList = []
+        return
+      }
+
+      try {
+        const likers = await dbServiceSimple.getCommentLikers(comment.id)
+        // 获取点赞用户的用户信息
+        const userIds = likers.map(l => l.user_id).filter(Boolean)
+        const userMap = await dbServiceSimple.getUsersByIds(userIds)
+        // 合并用户信息
+        this.likersList = likers.map(liker => ({
+          ...liker,
+          display_name: userMap[liker.user_id]?.display_name || null
+        }))
+        this.showLikers = comment.id
+      } catch (error) {
+        console.error('获取点赞用户失败:', error)
+      }
+    },
+
+    hideLikers() {
+      this.showLikers = null
+      this.likersList = []
     },
     
     replyToComment(comment) {
-      this.newComment = `@${comment.user?.name || '匿名用户'} `
+      this.newComment = `@${comment.user?.display_name || '匿名用户'} `
     },
-    
-    submitComment() {
-      if (!this.newComment.trim()) return
-      
-      const comment = {
-        id: Date.now(),
-        user: {
-          name: this.currentUser?.display_name || '匿名用户',
-          avatar_url: this.currentUser?.avatar_url
-        },
-        content: this.newComment.trim(),
-        created_at: new Date().toISOString(),
-        likes: 0,
-        isLiked: false,
-        replies: []
+
+    async loadComments(forceReload = false) {
+      try {
+        const storyId = this.story?.id
+        console.log('loadComments 开始, story id:', storyId, 'type:', typeof storyId, 'forceReload:', forceReload)
+
+        if (!storyId) return
+
+        // 检查缓存（使用字符串形式的key）
+        const cacheKey = String(storyId)
+        if (DATA_CACHE.comments[cacheKey] && !forceReload) {
+          console.log('从缓存读取评论:', DATA_CACHE.comments[cacheKey].length, '条')
+          this.comments = DATA_CACHE.comments[cacheKey]
+          return
+        }
+
+        // 从数据库获取（显示加载状态）
+        console.log('从数据库获取评论...')
+        this.loading.comments = true
+        try {
+          const comments = await dbServiceSimple.getStoryComments(storyId)
+          console.log('从数据库获取的评论:', comments)
+
+          // 转换评论数据格式（数据库已返回用户信息）
+          this.comments = comments.map(comment => ({
+            id: comment.id,
+            user: {
+              name: comment.user?.display_name || '匿名用户',
+              id: comment.user?.id || comment.user_id,
+              display_name: comment.user?.display_name,
+              avatar_url: comment.user?.avatar_url
+            },
+            content: comment.content,
+            created_at: comment.created_at,
+            likes: comment.likes || 0,
+            isLiked: false,
+            replies: (comment.replies || []).map(reply => ({
+              id: reply.id,
+              user: {
+                name: reply.user?.display_name || '匿名用户',
+                id: reply.user?.id || reply.user_id,
+                display_name: reply.user?.display_name,
+                avatar_url: reply.user?.avatar_url
+              },
+              content: reply.content,
+              created_at: reply.created_at,
+              likes: reply.likes || 0,
+              isLiked: false
+            }))
+          }))
+          console.log('从数据库获取的评论:', this.comments)
+        } finally {
+          this.loading.comments = false
+        }
+
+        // 检查当前用户的点赞状态
+        if (this.currentUser) {
+          const allCommentIds = [
+            ...this.comments.map(c => c.id),
+            ...this.comments.flatMap(c => c.replies.map(r => r.id))
+          ]
+          const likedMap = await dbServiceSimple.batchCheckUserLikedComments(allCommentIds, this.currentUser.id)
+
+          // 更新点赞状态
+          this.comments.forEach(comment => {
+            comment.isLiked = !!likedMap[comment.id]
+            comment.replies.forEach(reply => {
+              reply.isLiked = !!likedMap[reply.id]
+            })
+          })
+        }
+
+        // 存入缓存（使用字符串key）
+        DATA_CACHE.comments[cacheKey] = this.comments
+        console.log('评论已缓存, storyId:', storyId, '数量:', this.comments.length)
+      } catch (error) {
+        console.error('加载评论失败:', error)
+        // 失败时使用模拟数据
+        this.comments = this.generateMockComments()
       }
-      
-      this.comments.unshift(comment)
-      this.newComment = ''
+    },
+
+    subscribeToComments() {
+      if (this.commentSubscription) {
+        dbServiceSimple.unsubscribe(this.commentSubscription)
+      }
+
+      this.commentSubscription = dbServiceSimple.subscribeToComments(this.story.id, async (payload) => {
+        if (payload.eventType === 'INSERT') {
+          const newComment = payload.new
+          // 获取新评论的用户信息
+          const userMap = await dbServiceSimple.getUsersByIds([newComment.user_id])
+          const userInfo = userMap[newComment.user_id]
+          // 添加新评论到本地（避免重新加载）
+          const formattedComment = {
+            id: newComment.id,
+            user: {
+              name: userInfo?.display_name || '匿名用户',
+              id: newComment.user_id,
+              display_name: userInfo?.display_name,
+              avatar_url: userInfo?.avatar_url
+            },
+            content: newComment.content,
+            created_at: newComment.created_at,
+            likes: newComment.likes || 0,
+            isLiked: false,
+            replies: []
+          }
+
+          // 避免重复添加自己发送的评论
+          const isOwnComment = newComment.user_id === this.currentUser?.id
+          if (!isOwnComment) {
+            this.comments.unshift(formattedComment)
+            // 更新缓存
+            if (this.story?.id) {
+              DATA_CACHE.comments[String(this.story.id)] = this.comments
+            }
+          }
+        } else if (payload.eventType === 'DELETE') {
+          const deletedId = payload.old.id
+          this.comments = this.comments.filter(c => c.id !== deletedId)
+          // 更新缓存
+          if (this.story?.id) {
+            DATA_CACHE.comments[String(this.story.id)] = this.comments
+          }
+        }
+      })
+    },
+
+    async submitComment() {
+      if (!this.newComment.trim() || !this.currentUser) {
+        if (!this.currentUser) {
+          alert('请先登录后再评论')
+        }
+        return
+      }
+
+      this.loading.submittingComment = true
+      try {
+        const comment = await dbServiceSimple.addComment(
+          this.story.id,
+          this.currentUser.id,
+          this.newComment.trim()
+        )
+
+        if (comment) {
+          // 本地添加评论
+          this.comments.unshift({
+            id: comment.id,
+            user: {
+              name: this.currentUser?.display_name || '匿名用户',
+              id: this.currentUser.id,
+              display_name: this.currentUser?.display_name,
+              avatar_url: this.currentUser?.avatar_url
+            },
+            content: comment.content,
+            created_at: comment.created_at,
+            likes: 0,
+            isLiked: false,
+            replies: []
+          })
+          this.newComment = ''
+
+          // 更新缓存（使用字符串key）
+          if (this.story?.id) {
+            DATA_CACHE.comments[String(this.story.id)] = this.comments
+            console.log('提交评论后更新缓存')
+          }
+        }
+      } catch (error) {
+        console.error('提交评论失败:', error)
+        alert('评论失败，请重试')
+      } finally {
+        this.loading.submittingComment = false
+      }
     },
     
     insertEmoji(emoji) {
@@ -579,21 +896,56 @@ export default {
     
     async loadNearbyGroups() {
       try {
-        if (this.story?.location) {
-          this.nearbyGroups = await dbServiceSimple.getNearbyGroups(
-            this.story.location.lat,
-            this.story.location.lng
-          )
-        } else {
-          // 如果没有位置信息，使用模拟数据
-          this.nearbyGroups = this.generateMockGroups()
+        console.log('loadNearbyGroups 开始, location:', this.story?.location)
+
+        // 检查缓存（5分钟有效期）
+        const CACHE_EXPIRY = 5 * 60 * 1000 // 5分钟
+        const now = Date.now()
+
+        if (DATA_CACHE.groups.length > 0 && (now - DATA_CACHE.groupsTimestamp) < CACHE_EXPIRY) {
+          console.log('从缓存读取群组:', DATA_CACHE.groups.length, '个, 距上次加载:', Math.floor((now - DATA_CACHE.groupsTimestamp) / 1000), '秒')
+          this.nearbyGroups = DATA_CACHE.groups
+
+          // 检查当前用户已加入的群组
+          await this.checkJoinedGroups()
+          return
         }
-        
+
+        // 从数据库获取（显示加载状态）
+        this.loading.groups = true
+        try {
+          if (this.story?.location) {
+            console.log('从数据库获取群组...')
+            this.nearbyGroups = await dbServiceSimple.getNearbyGroups(
+              this.story.location.lat,
+              this.story.location.lng
+            )
+            console.log('从数据库获取的群组:', this.nearbyGroups)
+
+            // 检查当前用户已加入的群组
+            await this.checkJoinedGroups()
+          } else {
+            // 如果没有位置信息，使用模拟数据
+            console.log('没有位置信息，使用模拟群组数据')
+            this.nearbyGroups = this.generateMockGroups()
+          }
+        } finally {
+          this.loading.groups = false
+        }
+
         // 检查当前用户已加入的群组
         await this.checkJoinedGroups()
+
+        // 存入缓存
+        DATA_CACHE.groups = this.nearbyGroups
+        DATA_CACHE.groupsTimestamp = now
+        console.log('群组已缓存, 数量:', this.nearbyGroups.length)
+
+        console.log('群组数据加载完成, 共:', this.nearbyGroups.length, '个群组')
       } catch (error) {
         console.error('加载附近群组失败:', error)
         this.nearbyGroups = this.generateMockGroups() // 备用模拟数据
+        console.log('使用备用模拟群组数据, 共:', this.nearbyGroups.length, '个群组')
       }
     },
     
@@ -701,7 +1053,7 @@ export default {
       this.selectedGroup = null
       this.chatMessages = []
       this.newChatMessage = ''
-      
+
       // 取消消息订阅
       if (this.messageSubscription) {
         dbServiceSimple.unsubscribe(this.messageSubscription)
@@ -741,16 +1093,29 @@ export default {
     subscribeToMessages(groupId) {
       // 取消之前的订阅
       if (this.messageSubscription) {
+        console.log('取消之前的订阅')
         dbServiceSimple.unsubscribe(this.messageSubscription)
       }
-      
+
       // 订阅新消息
-      this.messageSubscription = dbServiceSimple.subscribeToGroupMessages(groupId, (payload) => {
+      this.messageSubscription = dbServiceSimple.subscribeToGroupMessages(groupId, async (payload) => {
+        console.log('订阅回调触发:', payload)
+
         if (payload.eventType === 'INSERT') {
           const newMessage = payload.new
+          console.log('新消息详情:', newMessage)
+
           // 避免重复添加自己发送的消息
           const isOwnMessage = newMessage.user_id === this.currentUser?.id
+          console.log('是否自己的消息:', isOwnMessage)
+
           if (!isOwnMessage) {
+            // 通过user_id从users表获取用户名，不使用消息中存储的user_name
+            const userProfile = await dbServiceSimple.getUserProfile(newMessage.user_id)
+            newMessage.user_name = userProfile?.display_name || '匿名用户'
+            newMessage.user_avatar = userProfile?.avatar_url || null
+
+            console.log('添加新消息到列表:', newMessage)
             this.chatMessages.push(newMessage)
             this.scrollToBottom()
           }
@@ -783,9 +1148,18 @@ export default {
     },
     
     async sendChatMessage() {
-      if (!this.newChatMessage.trim() || !this.currentUser) return
-      
+      console.log('sendChatMessage 被调用')
+      console.log('newChatMessage:', this.newChatMessage)
+      console.log('currentUser:', this.currentUser)
+      console.log('selectedGroup:', this.selectedGroup)
+
+      if (!this.newChatMessage.trim() || !this.currentUser) {
+        console.log('验证失败: 没有消息或用户未登录')
+        return
+      }
+
       try {
+        console.log('开始发送消息到数据库...')
         // 发送到数据库
         const message = await dbServiceSimple.sendSimpleGroupMessage(
           this.selectedGroup.id,
@@ -794,16 +1168,20 @@ export default {
           this.currentUser.avatar_url,
           this.newChatMessage.trim()
         )
-        
+
+        console.log('数据库返回:', message)
+
         if (message) {
           this.chatMessages.push(message)
           this.newChatMessage = ''
           this.scrollToBottom()
-          
+
           // 更新群组最后活动时间
           if (this.selectedGroup) {
             this.selectedGroup.lastActivity = '刚刚'
           }
+        } else {
+          console.error('数据库返回 null')
         }
       } catch (error) {
         console.error('发送消息失败:', error)
@@ -817,7 +1195,7 @@ export default {
           content: this.newChatMessage.trim(),
           created_at: new Date().toISOString()
         }
-        
+
         this.chatMessages.push(localMessage)
         this.newChatMessage = ''
         this.scrollToBottom()
@@ -1251,6 +1629,105 @@ export default {
 
 .like-comment {
   color: #ff2e4d;
+}
+
+.like-comment.liked {
+  color: #ff2e4d;
+}
+
+/* 点赞用户列表 */
+.likers-list {
+  margin-top: 12px;
+  padding: 12px;
+  background: #f8f8f8;
+  border-radius: 8px;
+  border: 1px solid #e0e0e0;
+}
+
+.likers-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.likers-header span {
+  font-size: 12px;
+  font-weight: 600;
+  color: #666;
+}
+
+.close-likers {
+  background: none;
+  border: none;
+  font-size: 18px;
+  color: #999;
+  cursor: pointer;
+  padding: 0;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: background 0.2s ease;
+}
+
+.close-likers:hover {
+  background: #e0e0e0;
+  color: #333;
+}
+
+.likers-content {
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.no-likers {
+  text-align: center;
+  padding: 20px;
+  color: #999;
+  font-size: 13px;
+}
+
+.liker-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 4px;
+  border-radius: 4px;
+  transition: background 0.2s ease;
+}
+
+.liker-item:hover {
+  background: #fff;
+}
+
+.liker-avatar {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: bold;
+  color: white;
+  flex-shrink: 0;
+}
+
+.liker-name {
+  flex: 1;
+  font-size: 12px;
+  color: #333;
+}
+
+.liker-time {
+  font-size: 11px;
+  color: #999;
 }
 
 /* 子评论 */
@@ -1727,6 +2204,35 @@ export default {
   cursor: not-allowed;
 }
 
+/* 加载状态 */
+.loading-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 40px 20px;
+  color: #666;
+  font-size: 14px;
+}
+
+.loading-spinner {
+  width: 20px;
+  height: 20px;
+  border: 3px solid #f3f3f3;
+  border-top-color: #667eea;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
 
 
 
@@ -2001,5 +2507,34 @@ export default {
 .send-btn:disabled {
   background: #ccc;
   cursor: not-allowed;
+}
+
+/* 加载状态 */
+.loading-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 40px 20px;
+  color: #666;
+  font-size: 14px;
+}
+
+.loading-spinner {
+  width: 20px;
+  height: 20px;
+  border: 3px solid #f3f3f3;
+  border-top-color: #667eea;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
 }
 </style>

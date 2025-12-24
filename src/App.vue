@@ -30,13 +30,14 @@
     <!-- 用户资料模态框 - 移到app容器外 -->
     <div v-if="showProfile" class="modal-overlay" @click="showProfile = false">
       <div class="modal login-modal" @click.stop>
-        <UserProfile 
-          :user="user" 
-          :events="events" 
-          @logout="handleLogout" 
+        <UserProfile
+          :user="user"
+          :events="events"
+          @logout="handleLogout"
           @close="showProfile = false"
           @focus-event="handleFocusEvent"
           @delete-event="handleDeleteEvent"
+          @update-user="handleUserUpdate"
         />
       </div>
     </div>
@@ -90,14 +91,11 @@ export default {
   
   methods: {
     getUserDisplayName() {
-      // 优先使用display_name，如果没有则使用邮箱前缀
+      // 优先使用display_name，如果没有则使用匿名用户
       if (this.user?.display_name) {
         return this.user.display_name
       }
-      if (this.user?.email) {
-        return this.user.email.split('@')[0]
-      }
-      return '用户'
+      return '匿名用户'
     },
     
     async fetchUserProfile(userId) {
@@ -107,10 +105,11 @@ export default {
       }
     },
     
-    handleLoginSuccess(user) {
+    async handleLoginSuccess(user) {
       this.user = user
       this.showLogin = false
-      this.fetchUserProfile(user.id)
+      // 等待用户资料获取完成，确保 display_name 正确加载
+      await this.fetchUserProfile(user.id)
     },
     
     handleLogout() {
@@ -128,6 +127,10 @@ export default {
       this.$refs.mapComponent?.focusOnEvent(event)
     },
     
+    handleUserUpdate(updatedUser) {
+      this.user = { ...this.user, ...updatedUser }
+    },
+
     async handleDeleteEvent(eventId) {
       try {
         // 通知地图组件删除事件

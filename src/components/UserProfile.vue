@@ -6,8 +6,25 @@
         <span v-else>{{ userInitials }}</span>
       </div>
       <div class="user-info">
-        <h3>{{ user.display_name || user.email }}</h3>
-        <p>{{ user.email }}</p>
+        <div v-if="isEditing" class="edit-mode">
+          <input
+            v-model="editingName"
+            ref="nameInput"
+            class="name-input"
+            placeholder="输入用户名"
+            @keyup.enter="saveEdit"
+            @keyup.esc="cancelEdit"
+          />
+          <div class="edit-buttons">
+            <button @mousedown="saveEdit" @click="saveEdit" class="save-btn" title="保存">✓</button>
+            <button @mousedown="cancelEdit" @click="cancelEdit" class="cancel-btn" title="取消">✕</button>
+          </div>
+        </div>
+        <div v-else class="display-mode">
+          <h3>{{ user.display_name || user.email }}</h3>
+          <p>{{ user.email }}</p>
+          <button @click="startEdit" class="edit-name-btn" title="修改用户名">✎</button>
+        </div>
       </div>
     </div>
     
@@ -96,18 +113,26 @@ export default {
     }
   },
   
-  emits: ['logout', 'close'],
-  
+  emits: ['logout', 'close', 'update-user'],
+
+  data() {
+    return {
+      isEditing: false,
+      editingName: ''
+    }
+  },
+
   computed: {
     userInitials() {
-      const name = this.user.display_name || this.user.email
+      const name = this.user.display_name || '匿名用户'
       return name.charAt(0).toUpperCase()
     },
-    
+
     avatarStyle() {
       if (!this.user.avatar_url) {
         const colors = ['#667eea', '#f56565', '#48bb78', '#ed8936', '#9f7aea', '#38b2ac']
-        const index = this.user.email ? this.user.email.length % colors.length : 0
+        const name = this.user.display_name || '匿名用户'
+        const index = name.length % colors.length
         return {
           background: colors[index]
         }
@@ -138,6 +163,39 @@ export default {
   },
   
   methods: {
+    startEdit() {
+      this.editingName = this.user.display_name || ''
+      this.isEditing = true
+      this.$nextTick(() => {
+        this.$refs.nameInput?.focus()
+      })
+    },
+
+    cancelEdit() {
+      this.isEditing = false
+      this.editingName = ''
+    },
+
+    async saveEdit() {
+      if (!this.editingName.trim()) {
+        alert('用户名不能为空')
+        return
+      }
+
+      const { dbServiceSimple } = await import('../utils/database-simple.js')
+      const result = await dbServiceSimple.updateUserProfile(this.user.id, {
+        display_name: this.editingName.trim()
+      })
+
+      if (result) {
+        // 触发更新用户信息事件
+        this.$emit('update-user', { ...this.user, display_name: this.editingName.trim() })
+        this.isEditing = false
+      } else {
+        alert('保存失败，请重试')
+      }
+    },
+
     async handleLogout() {
       try {
         const { error } = await supabase.auth.signOut()
@@ -236,6 +294,97 @@ export default {
   margin: 0;
   color: #666;
   font-size: 0.9rem;
+}
+
+/* 编辑模式样式 */
+.edit-mode {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.name-input {
+  padding: 0.4rem 0.6rem;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 1rem;
+  color: #333;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.name-input:focus {
+  border-color: #667eea;
+}
+
+.edit-buttons {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.save-btn,
+.cancel-btn {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 1rem;
+  transition: all 0.2s;
+}
+
+.save-btn {
+  background: #48bb78;
+  color: white;
+}
+
+.save-btn:hover {
+  background: #38a169;
+}
+
+.cancel-btn {
+  background: #fc8181;
+  color: white;
+}
+
+.cancel-btn:hover {
+  background: #f56565;
+}
+
+/* 显示模式样式 */
+.display-mode {
+  position: relative;
+}
+
+.edit-name-btn {
+  position: absolute;
+  top: 0;
+  right: -30px;
+  background: none;
+  border: none;
+  color: #999;
+  font-size: 0.9rem;
+  cursor: pointer;
+  padding: 0;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: all 0.2s;
+}
+
+.user-info:hover .edit-name-btn {
+  opacity: 1;
+}
+
+.edit-name-btn:hover {
+  color: #667eea;
+  transform: scale(1.1);
 }
 
 .profile-stats {

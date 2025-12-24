@@ -139,7 +139,13 @@ export default {
         // 继续执行，因为认证已经成功
       }
       
-      this.$emit('login-success', authData.user)
+      // 返回包含 display_name 的用户对象
+      const userWithProfile = {
+        ...authData.user,
+        display_name: this.form.username
+      }
+      
+      this.$emit('login-success', userWithProfile)
     }
   }
 }

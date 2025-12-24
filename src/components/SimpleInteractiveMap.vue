@@ -5,43 +5,104 @@
     <!-- 事件输入模态框 -->
     <div v-if="showModal" class="modal-overlay" @click="closeModal">
       <div class="modal" @click.stop>
-        <h3>📝 添加新故事</h3>
+        <!-- 作者信息 -->
+        <div class="author-section" v-if="user">
+          <div class="author-avatar">
+            <img v-if="user.avatar_url" :src="user.avatar_url" :alt="user.display_name" />
+            <span v-else>{{ (user.display_name || '我').charAt(0).toUpperCase() }}</span>
+          </div>
+          <div class="author-info">
+            <div class="author-name">{{ user.display_name || '我' }}</div>
+            <div class="post-time">刚刚</div>
+          </div>
+        </div>
+
+        <h3>📝 分享你的故事</h3>
         <form @submit.prevent="addEvent">
           <div class="form-group">
-            <label for="eventTitle">事件标题</label>
+            <label for="eventTitle">标题</label>
             <input 
               id="eventTitle"
               v-model="newEvent.title" 
               type="text" 
-              placeholder="请输入事件标题" 
+              placeholder="给你的故事起个标题..." 
               required
+              maxlength="50"
+            />
+            <div class="char-count">{{ newEvent.title.length }}/50</div>
+          </div>
+          
+          <div class="form-group">
+            <label for="eventDescription">故事内容</label>
+            <textarea 
+              id="eventDescription"
+              v-model="newEvent.description" 
+              placeholder="分享你的故事、感受或经历..." 
+              rows="5"
+              required
+              maxlength="500"
+            ></textarea>
+            <div class="char-count">{{ newEvent.description.length }}/500</div>
+          </div>
+          
+          <div class="form-group">
+            <label for="eventTags">标签 (可选)</label>
+            <input 
+              id="eventTags"
+              v-model="newEvent.tags" 
+              type="text" 
+              placeholder="添加标签，用空格分隔，如：生活 美食 旅行" 
+              maxlength="100"
+            />
+            <div class="tag-hint">使用空格分隔多个标签</div>
+          </div>
+          
+          <div class="form-group">
+            <label for="eventImage">图片链接 (可选)</label>
+            <input 
+              id="eventImage"
+              v-model="newEvent.image" 
+              type="url" 
+              placeholder="https://example.com/image.jpg" 
             />
           </div>
           
           <div class="form-group">
-            <label for="eventDescription">事件描述</label>
-            <textarea 
-              id="eventDescription"
-              v-model="newEvent.description" 
-              placeholder="请输入事件描述" 
-              rows="3"
-              required
-            ></textarea>
+            <label for="eventType">故事类型</label>
+            <div class="type-selector">
+              <label 
+                v-for="type in eventTypes" 
+                :key="type.value"
+                class="type-option"
+                :class="{ 'selected': newEvent.type === type.value }"
+              >
+                <input 
+                  type="radio" 
+                  :value="type.value" 
+                  v-model="newEvent.type" 
+                  :id="'type-' + type.value"
+                  required
+                />
+                <span class="type-emoji">{{ type.emoji }}</span>
+                <span class="type-name">{{ type.name }}</span>
+              </label>
+            </div>
           </div>
           
-          <div class="form-group">
-            <label for="eventType">故事类型</label>
-            <select id="eventType" v-model="newEvent.type" required>
-              <option value="story">故事</option>
-              <option value="event">活动</option>
-              <option value="news">新闻</option>
-              <option value="date">约会</option>
-            </select>
+          <!-- 位置信息 -->
+          <div class="form-group location-info">
+            <label>位置信息</label>
+            <div class="location-display">
+              <span class="location-icon">📍</span>
+              <span class="location-text">{{ selectedLocation }}</span>
+            </div>
           </div>
           
           <div class="form-actions">
             <button type="button" class="btn-cancel" @click="closeModal">取消</button>
-            <button type="submit" class="btn-submit">添加故事</button>
+            <button type="submit" class="btn-submit" :disabled="loading">
+              {{ loading ? '发布中...' : '发布故事' }}
+            </button>
           </div>
         </form>
       </div>
@@ -122,6 +183,7 @@
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { dbServiceSimple } from '../utils/database-simple.js'
+import { supabase } from '../supabase.js'
 import { isCloudConfigured } from '../supabase.js'
 import StoryDetail from './StoryDetail.vue'
 
@@ -144,17 +206,28 @@ export default {
       events: [],
       showModal: false,
       showSidebar: false,
-      selectedLocation: null,
+      selectedLocationLat: null,
+      selectedLocationLng: null,
       locating: false,
       currentLocationMarker: null,
       syncEnabled: true,
       switchingView: false,
       is3DView: false,
+      loading: false,
+      user: null,
       newEvent: {
         title: '',
         description: '',
-        type: 'story'
+        type: 'story',
+        tags: '',
+        image: ''
       },
+      eventTypes: [
+        { value: 'story', name: '故事', emoji: '📖' },
+        { value: 'event', name: '活动', emoji: '🎉' },
+        { value: 'news', name: '新闻', emoji: '📰' },
+        { value: 'date', name: '约会', emoji: '💕' }
+      ],
       selectedStory: null,
       showStoryDetail: false,
     }
@@ -163,9 +236,19 @@ export default {
     this.$nextTick(() => {
       this.initMap()
       this.loadEvents()
+      this.loadCurrentUser()
     })
   },
-  
+
+  computed: {
+    selectedLocation() {
+      if (this.selectedLocationLat !== null && this.selectedLocationLng !== null) {
+        return `${this.selectedLocationLat.toFixed(4)}, ${this.selectedLocationLng.toFixed(4)}`
+      }
+      return '点击地图选择位置'
+    }
+  },
+
   beforeUnmount() {
     if (this.subscription) {
       dbService.unsubscribe(this.subscription)
@@ -181,7 +264,8 @@ export default {
       }).addTo(this.map)
       
       this.map.on('click', (e) => {
-        this.selectedLocation = e.latlng
+        this.selectedLocationLat = e.latlng.lat
+        this.selectedLocationLng = e.latlng.lng
         this.showModal = true
       })
     },
@@ -283,35 +367,71 @@ export default {
     },
     
     async addEvent() {
-      if (!this.selectedLocation || !this.newEvent.title || !this.newEvent.description || !this.newEvent.type) {
+      if (!this.selectedLocationLat || !this.selectedLocationLng || !this.newEvent.title || !this.newEvent.description || !this.newEvent.type) {
+        alert('请填写完整信息并选择位置')
         return
       }
-      
+
       // 检查用户是否登录
       if (!this.user) {
         alert('请先登录后再添加故事')
         return
       }
-      
+
+      this.loading = true
+
       const event = {
         title: this.newEvent.title,
         description: this.newEvent.description,
         type: this.newEvent.type,
         location: {
-          lat: this.selectedLocation.lat,
-          lng: this.selectedLocation.lng
+          lat: this.selectedLocationLat,
+          lng: this.selectedLocationLng
         },
-        user_id: this.user.id
+        user_id: this.user.id,
+        tags: this.newEvent.tags || '',
+        image: this.newEvent.image || null
       }
-      
-      const savedEvent = await dbServiceSimple.addEvent(event)
-      if (!savedEvent) {
-        alert('保存失败，请检查网络连接')
-        return
+
+      try {
+        const savedEvent = await dbServiceSimple.addEvent(event)
+        if (!savedEvent) {
+          alert('保存失败，请检查网络连接')
+          this.loading = false
+          return
+        }
+
+        // 添加用户信息
+        const eventWithUser = {
+          ...savedEvent,
+          user: {
+            id: this.user.id,
+            display_name: this.user.display_name,
+            avatar_url: this.user.avatar_url
+          }
+        }
+
+        this.events.unshift(eventWithUser)
+        this.$emit('update-events', this.events)
+        this.addMarker(eventWithUser)
+
+        // 重置表单
+        this.newEvent = {
+          title: '',
+          description: '',
+          type: 'story',
+          tags: '',
+          image: ''
+        }
+        this.selectedLocationLat = null
+        this.selectedLocationLng = null
+        this.showModal = false
+      } catch (error) {
+        console.error('添加事件失败:', error)
+        alert('添加失败，请重试')
+      } finally {
+        this.loading = false
       }
-      
-      this.events.unshift(savedEvent)
-      this.$emit('update-events', this.events)
       
       if (this.map) {
         const marker = L.marker([savedEvent.location.lat, savedEvent.location.lng], {
@@ -378,9 +498,24 @@ export default {
       this.newEvent = {
         title: '',
         description: '',
-        type: ''
+        type: 'story',
+        tags: '',
+        image: ''
       }
-      this.selectedLocation = null
+      this.selectedLocationLat = null
+      this.selectedLocationLng = null
+    },
+
+    async loadCurrentUser() {
+      try {
+        const { data: { user } } = await supabase.auth.getUser()
+        if (user) {
+          const userProfile = await dbServiceSimple.getUserProfile(user.id)
+          this.user = userProfile
+        }
+      } catch (error) {
+        console.error('加载用户信息失败:', error)
+      }
     },
     
     getEventTypeName(type) {
@@ -583,32 +718,32 @@ export default {
     async loadEvents() {
       try {
         if (isCloudConfigured) {
-      this.events = await dbServiceSimple.getAllEvents()
-      
-      // 为每个故事添加模拟图片
-      this.events = this.events.map(event => ({
-        ...event,
-        image: this.generateMockImage(event)
-      }))
-      
-      console.log('加载的事件数据:', this.events)
-          
+          this.events = await dbServiceSimple.getAllEvents()
+
+          // 为每个故事添加模拟图片
+          this.events = this.events.map(event => ({
+            ...event,
+            image: this.generateMockImage(event)
+          }))
+
+          console.log('加载的事件数据:', this.events)
+
           if (this.map) {
             this.events.forEach(event => {
-        const marker = L.marker([event.location.lat, event.location.lng], {
-          icon: this.createCustomIcon(event.type)
-        })
-          .addTo(this.map)
-          .on('click', () => {
-            this.showStoryDetail = true
-            this.selectedStory = event
-          })
-              
+              const marker = L.marker([event.location.lat, event.location.lng], {
+                icon: this.createCustomIcon(event.type)
+              })
+                .addTo(this.map)
+                .on('click', () => {
+                  this.showStoryDetail = true
+                  this.selectedStory = event
+                })
+
               this.markers.push({ id: event.id, marker })
             })
-            
+
             this.setupRealtimeSync()
-            
+
             // 通知父组件更新事件列表
             this.$emit('update-events', this.events)
           }
@@ -675,10 +810,10 @@ export default {
                   <div style="margin-bottom: 8px; padding: 4px 0; border-bottom: 1px solid #f1f1f2;">
                     <div style="display: flex; align-items: center; gap: 6px;">
                       <div style="width: 24px; height: 24px; border-radius: 50%; background: #f1f1f2; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: bold;">
-                        ${(newRecord.user.display_name || newRecord.user.email).charAt(0).toUpperCase()}
+                        ${(newRecord.user.display_name || '匿名').charAt(0).toUpperCase()}
                       </div>
                       <span style="font-size: 12px; color: #667eea; font-weight: 500;">
-                        ${newRecord.user.display_name || newRecord.user.email}
+                        ${newRecord.user.display_name || '匿名用户'}
                       </span>
                     </div>
                   </div>
@@ -1318,5 +1453,135 @@ export default {
   justify-content: center;
   align-items: center;
   z-index: 4000;
+}
+
+/* 作者信息样式 */
+.author-section {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 20px;
+  padding: 15px;
+  background: #f8f8f8;
+  border-radius: 12px;
+}
+
+.author-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #ff6b9d 0%, #c44569 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  font-weight: bold;
+  color: white;
+  overflow: hidden;
+}
+
+.author-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.author-info {
+  flex: 1;
+}
+
+.author-name {
+  font-size: 16px;
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 4px;
+}
+
+.post-time {
+  font-size: 12px;
+  color: #999;
+}
+
+/* 类型选择器样式 */
+.type-selector {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+
+.type-option {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 12px 8px;
+  border: 2px solid #e8e8e8;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.type-option:hover {
+  border-color: #ff6b9d;
+  background: #fff0f6;
+}
+
+.type-option.selected {
+  border-color: #ff6b9d;
+  background: linear-gradient(135deg, #ff6b9d 0%, #c44569 100%);
+  color: white;
+}
+
+.type-option input[type="radio"] {
+  display: none;
+}
+
+.type-emoji {
+  font-size: 24px;
+  margin-bottom: 6px;
+}
+
+.type-name {
+  font-size: 12px;
+  font-weight: 500;
+}
+
+/* 字符计数 */
+.char-count {
+  text-align: right;
+  font-size: 11px;
+  color: #999;
+  margin-top: 4px;
+}
+
+/* 标签提示 */
+.tag-hint {
+  font-size: 11px;
+  color: #999;
+  margin-top: 4px;
+}
+
+/* 位置信息 */
+.location-info {
+  margin-bottom: 20px;
+}
+
+.location-display {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px;
+  background: #f0f7ff;
+  border-radius: 8px;
+  color: #1890ff;
+  font-size: 14px;
+}
+
+.location-icon {
+  font-size: 18px;
+}
+
+.location-text {
+  flex: 1;
 }
 </style>
