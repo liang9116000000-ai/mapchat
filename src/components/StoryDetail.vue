@@ -29,9 +29,27 @@
           <span class="tag" v-for="tag in getTags()" :key="tag"># {{ tag }}</span>
         </div>
 
-        <!-- 图片区域 -->
-        <div class="image-gallery" v-if="story.image">
-          <img :src="story.image" :alt="story.title" class="main-image" />
+        <!-- 图片区域 - 支持多图 -->
+        <div class="image-gallery" v-if="storyImages.length > 0">
+          <div class="gallery-grid" :class="'grid-' + Math.min(storyImages.length, 9)">
+            <div 
+              v-for="(img, index) in storyImages" 
+              :key="index" 
+              class="gallery-item"
+              @click="openImageViewer(index)"
+            >
+              <img :src="img" :alt="story.title + ' 图片' + (index + 1)" />
+            </div>
+          </div>
+        </div>
+
+        <!-- 图片查看器 -->
+        <div v-if="showImageViewer" class="image-viewer-overlay" @click="closeImageViewer">
+          <button class="viewer-close" @click="closeImageViewer">×</button>
+          <button v-if="storyImages.length > 1" class="viewer-prev" @click.stop="prevImage">‹</button>
+          <img :src="storyImages[currentImageIndex]" class="viewer-image" @click.stop />
+          <button v-if="storyImages.length > 1" class="viewer-next" @click.stop="nextImage">›</button>
+          <div class="viewer-counter">{{ currentImageIndex + 1 }} / {{ storyImages.length }}</div>
         </div>
 
         <!-- 位置信息 -->
@@ -354,8 +372,10 @@ export default {
       showChatRoom: false,
       messageSubscription: null,
       commentSubscription: null,
-      showLikers: null, // 显示点赞用户列表的评论ID
-      likersList: [], // 点赞用户列表
+      showLikers: null,
+      likersList: [],
+      showImageViewer: false,
+      currentImageIndex: 0,
       // 加载状态
       loading: {
         comments: false,
@@ -415,10 +435,37 @@ export default {
     
     user() {
       return this.currentUser
+    },
+    
+    // 兼容单图和多图（逗号分隔）
+    storyImages() {
+      if (this.story.image) {
+        // 按逗号分隔，过滤空值
+        return this.story.image.split(',').filter(img => img.trim())
+      }
+      return []
     }
   },
   
   methods: {
+    // 图片查看器方法
+    openImageViewer(index) {
+      this.currentImageIndex = index
+      this.showImageViewer = true
+    },
+    
+    closeImageViewer() {
+      this.showImageViewer = false
+    },
+    
+    prevImage() {
+      this.currentImageIndex = (this.currentImageIndex - 1 + this.storyImages.length) % this.storyImages.length
+    },
+    
+    nextImage() {
+      this.currentImageIndex = (this.currentImageIndex + 1) % this.storyImages.length
+    },
+    
     async initializeData() {
       console.log('初始化故事详情数据, story id:', this.story?.id, 'type:', typeof this.story?.id)
 
@@ -1459,21 +1506,122 @@ export default {
 /* 图片区域 */
 .image-gallery {
   margin-bottom: 24px;
-  text-align: center;
 }
 
-.main-image {
+.gallery-grid {
+  display: grid;
+  gap: 4px;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.gallery-grid.grid-1 {
+  grid-template-columns: 1fr;
+}
+
+.gallery-grid.grid-2 {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+.gallery-grid.grid-3 {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.gallery-grid.grid-4 {
+  grid-template-columns: repeat(2, 1fr);
+  grid-template-rows: repeat(2, 1fr);
+}
+
+.gallery-grid.grid-5,
+.gallery-grid.grid-6 {
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(2, 1fr);
+}
+
+.gallery-grid.grid-7,
+.gallery-grid.grid-8,
+.gallery-grid.grid-9 {
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(3, 1fr);
+}
+
+.gallery-item {
+  aspect-ratio: 1;
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.gallery-item img {
   width: 100%;
-  height: 400px;
+  height: 100%;
   object-fit: cover;
-  border-radius: 16px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
-  transition: all 0.3s ease;
+  transition: transform 0.3s ease;
 }
 
-.main-image:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.2);
+.gallery-item:hover img {
+  transform: scale(1.05);
+}
+
+/* 图片查看器 */
+.image-viewer-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.95);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.viewer-image {
+  max-width: 90%;
+  max-height: 90%;
+  object-fit: contain;
+}
+
+.viewer-close {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  background: none;
+  border: none;
+  color: white;
+  font-size: 40px;
+  cursor: pointer;
+}
+
+.viewer-prev,
+.viewer-next {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  background: rgba(255, 255, 255, 0.2);
+  border: none;
+  color: white;
+  font-size: 50px;
+  padding: 20px;
+  cursor: pointer;
+  border-radius: 50%;
+}
+
+.viewer-prev { left: 20px; }
+.viewer-next { right: 20px; }
+
+.viewer-prev:hover,
+.viewer-next:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.viewer-counter {
+  position: absolute;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  color: white;
+  font-size: 16px;
 }
 
 /* 位置 */

@@ -58,29 +58,32 @@
           </div>
           
           <div class="form-group">
-            <label>上传图片 (可选)</label>
+            <label>上传图片 (可选，最多9张)</label>
             <div class="image-upload-area">
-              <!-- 图片预览 -->
-              <div v-if="imagePreview" class="image-preview">
-                <img :src="imagePreview" alt="预览图片" />
-                <button type="button" class="remove-image-btn" @click="removeImage">×</button>
-              </div>
-              <!-- 上传按钮 -->
-              <div v-else class="upload-placeholder" @click="triggerFileInput">
-                <span class="upload-icon">📷</span>
-                <span class="upload-text">点击上传图片</span>
-                <span class="upload-hint">支持 JPG、PNG、GIF，最大 5MB</span>
+              <!-- 已上传图片预览 -->
+              <div class="image-preview-list">
+                <div v-for="(img, index) in imagePreviews" :key="index" class="image-preview-item">
+                  <img :src="img" alt="预览图片" />
+                  <button type="button" class="remove-image-btn" @click="removeImage(index)">×</button>
+                </div>
+                <!-- 上传按钮（未满9张时显示） -->
+                <div v-if="imagePreviews.length < 9" class="upload-placeholder" @click="triggerFileInput">
+                  <span class="upload-icon">📷</span>
+                  <span class="upload-text">{{ imagePreviews.length === 0 ? '点击上传' : '+' }}</span>
+                </div>
               </div>
               <input 
                 ref="fileInput"
                 type="file" 
                 accept="image/jpeg,image/png,image/gif"
+                multiple
                 @change="handleImageUpload"
                 style="display: none"
               />
             </div>
+            <div class="upload-hint">支持 JPG、PNG、GIF，单张最大 5MB</div>
             <div v-if="uploadingImage" class="upload-progress">
-              <span>上传中...</span>
+              <span>上传中... ({{ uploadProgress }}/{{ uploadTotal }})</span>
             </div>
           </div>
           
@@ -236,10 +239,12 @@ export default {
         description: '',
         type: 'story',
         tags: '',
-        image: ''
+        images: []
       },
-      imagePreview: null,
+      imagePreviews: [],
       uploadingImage: false,
+      uploadProgress: 0,
+      uploadTotal: 0,
       eventTypes: [
         { value: 'story', name: '故事', emoji: '📖' },
         { value: 'event', name: '活动', emoji: '🎉' },
@@ -278,52 +283,65 @@ export default {
       this.$refs.fileInput.click()
     },
     
-    // 处理图片上传
+    // 处理多图片上传
     async handleImageUpload(event) {
-      const file = event.target.files[0]
-      if (!file) return
+      const files = Array.from(event.target.files)
+      if (!files.length) return
       
-      // 验证文件类型
+      // 检查总数量限制
+      const remainingSlots = 9 - this.imagePreviews.length
+      if (files.length > remainingSlots) {
+        alert(`最多只能上传9张图片，当前还可上传${remainingSlots}张`)
+        return
+      }
+      
       const allowedTypes = ['image/jpeg', 'image/png', 'image/gif']
-      if (!allowedTypes.includes(file.type)) {
-        alert('只支持 JPG、PNG、GIF 格式的图片')
-        return
+      const validFiles = []
+      
+      // 验证所有文件
+      for (const file of files) {
+        if (!allowedTypes.includes(file.type)) {
+          alert(`${file.name} 格式不支持，只支持 JPG、PNG、GIF`)
+          continue
+        }
+        if (file.size > 5 * 1024 * 1024) {
+          alert(`${file.name} 超过5MB限制`)
+          continue
+        }
+        validFiles.push(file)
       }
       
-      // 验证文件大小 (5MB)
-      if (file.size > 5 * 1024 * 1024) {
-        alert('图片大小不能超过 5MB')
-        return
-      }
+      if (!validFiles.length) return
       
       this.uploadingImage = true
+      this.uploadProgress = 0
+      this.uploadTotal = validFiles.length
       
       try {
-        // 上传到 Supabase Storage
-        const imageUrl = await dbServiceSimple.uploadImage(file, this.user?.id)
-        
-        if (imageUrl) {
-          this.newEvent.image = imageUrl
-          this.imagePreview = imageUrl
-          console.log('图片上传成功:', imageUrl)
-        } else {
-          alert('图片上传失败，请重试')
+        for (const file of validFiles) {
+          const imageUrl = await dbServiceSimple.uploadImage(file, this.user?.id)
+          if (imageUrl) {
+            this.newEvent.images.push(imageUrl)
+            this.imagePreviews.push(imageUrl)
+            this.uploadProgress++
+          }
         }
+        console.log('图片上传完成:', this.newEvent.images)
       } catch (error) {
         console.error('图片上传失败:', error)
-        alert('图片上传失败: ' + error.message)
+        alert('部分图片上传失败: ' + error.message)
       } finally {
         this.uploadingImage = false
+        if (this.$refs.fileInput) {
+          this.$refs.fileInput.value = ''
+        }
       }
     },
     
-    // 移除已上传的图片
-    removeImage() {
-      this.newEvent.image = ''
-      this.imagePreview = null
-      if (this.$refs.fileInput) {
-        this.$refs.fileInput.value = ''
-      }
+    // 移除指定图片
+    removeImage(index) {
+      this.newEvent.images.splice(index, 1)
+      this.imagePreviews.splice(index, 1)
     },
     
     initMap() {
@@ -460,7 +478,7 @@ export default {
         },
         user_id: this.user.id,
         tags: this.newEvent.tags || '',
-        image: this.newEvent.image || null
+        image: this.newEvent.images.length > 0 ? this.newEvent.images.join(',') : null
       }
 
       try {
@@ -560,9 +578,9 @@ export default {
         description: '',
         type: 'story',
         tags: '',
-        image: ''
+        images: []
       }
-      this.imagePreview = null
+      this.imagePreviews = []
       this.selectedLocationLat = null
       this.selectedLocationLng = null
       if (this.$refs.fileInput) {
@@ -1621,12 +1639,31 @@ export default {
   margin: 0.5rem 1.5rem 1rem;
 }
 
+.image-preview-list {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.image-preview-item {
+  position: relative;
+  aspect-ratio: 1;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.image-preview-item img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
 .upload-placeholder {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 2rem;
+  aspect-ratio: 1;
   border: 2px dashed #e1e2e3;
   border-radius: 8px;
   cursor: pointer;
@@ -1640,12 +1677,11 @@ export default {
 }
 
 .upload-icon {
-  font-size: 2rem;
-  margin-bottom: 0.5rem;
+  font-size: 1.5rem;
 }
 
 .upload-text {
-  font-size: 0.9rem;
+  font-size: 0.8rem;
   color: #1e2022;
   font-weight: 500;
 }
@@ -1653,34 +1689,22 @@ export default {
 .upload-hint {
   font-size: 0.75rem;
   color: #8a919f;
-  margin-top: 0.25rem;
-}
-
-.image-preview {
-  position: relative;
-  border-radius: 8px;
-  overflow: hidden;
-}
-
-.image-preview img {
-  width: 100%;
-  max-height: 200px;
-  object-fit: cover;
-  border-radius: 8px;
+  margin: 0.5rem 1.5rem;
+  text-align: center;
 }
 
 .remove-image-btn {
   position: absolute;
-  top: 8px;
-  right: 8px;
-  width: 28px;
-  height: 28px;
+  top: 4px;
+  right: 4px;
+  width: 22px;
+  height: 22px;
   border-radius: 50%;
   background: rgba(0, 0, 0, 0.6);
   color: white;
   border: none;
   cursor: pointer;
-  font-size: 1.2rem;
+  font-size: 1rem;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1693,7 +1717,7 @@ export default {
 
 .upload-progress {
   text-align: center;
-  padding: 0.5rem;
+  padding: 0.5rem 1.5rem;
   color: #1171ee;
   font-size: 0.85rem;
 }
