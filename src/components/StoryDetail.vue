@@ -60,15 +60,15 @@
         <!-- 互动统计 -->
         <div class="stats-section">
           <div class="stat-item">
-            <span class="count">{{ story.likes || Math.floor(Math.random() * 1000) }}</span>
+            <span class="count">{{ story.likes || 0 }}</span>
             <span class="label">喜欢</span>
           </div>
           <div class="stat-item">
-            <span class="count">{{ story.favorites || Math.floor(Math.random() * 100) }}</span>
+            <span class="count">{{ story.favorites || 0 }}</span>
             <span class="label">收藏</span>
           </div>
           <div class="stat-item">
-            <span class="count">{{ story.views || Math.floor(Math.random() * 5000) }}</span>
+            <span class="count">{{ story.views || 0 }}</span>
             <span class="label">浏览</span>
           </div>
         </div>
@@ -376,6 +376,8 @@ export default {
       likersList: [],
       showImageViewer: false,
       currentImageIndex: 0,
+      viewCounted: false,
+      initialized: false,
       // 加载状态
       loading: {
         comments: false,
@@ -409,13 +411,21 @@ export default {
 
   watch: {
     'story.id': {
-      immediate: true,
       async handler(newId, oldId) {
         console.log('StoryDetail watch: story.id 变化', { newId, oldId })
-        if (newId && newId !== oldId) {
+        // 只在故事切换时执行（不是首次加载）
+        if (newId && oldId && newId !== oldId) {
+          this.viewCounted = false
+          this.initialized = false
           await this.initializeData()
         }
       }
+    }
+  },
+  
+  async mounted() {
+    if (this.story?.id && !this.initialized) {
+      await this.initializeData()
     }
   },
   
@@ -467,12 +477,29 @@ export default {
     },
     
     async initializeData() {
+      // 防止重复初始化
+      if (this.initialized) {
+        console.log('已初始化，跳过')
+        return
+      }
+      this.initialized = true
+      
       console.log('初始化故事详情数据, story id:', this.story?.id, 'type:', typeof this.story?.id)
 
       // 重置数据状态
       this.showChatRoom = false
       this.selectedGroup = null
       this.chatMessages = []
+      this.isLiked = false
+      this.isFavorited = false
+
+      // 增加浏览量（只在首次打开时增加）
+      if (this.story?.id && !this.viewCounted) {
+        this.viewCounted = true
+        const newViews = (this.story.views || 0) + 1
+        this.story.views = newViews
+        dbServiceSimple.updateEventStats(this.story.id, { views: newViews })
+      }
 
       // 清除评论缓存，强制从数据库重新加载
       const cacheKey = String(this.story?.id)
@@ -524,17 +551,38 @@ export default {
     
 
     
-    toggleLike() {
-      this.isLiked = !this.isLiked
-      if (this.isLiked) {
-        this.story.likes = (this.story.likes || 0) + 1
-      } else {
-        this.story.likes = Math.max(0, (this.story.likes || 0) - 1)
+    async toggleLike() {
+      if (!this.currentUser) {
+        alert('请先登录')
+        return
       }
+      
+      this.isLiked = !this.isLiked
+      const newLikes = this.isLiked 
+        ? (this.story.likes || 0) + 1 
+        : Math.max(0, (this.story.likes || 0) - 1)
+      
+      this.story.likes = newLikes
+      
+      // 更新数据库
+      await dbServiceSimple.updateEventStats(this.story.id, { likes: newLikes })
     },
     
-    toggleFavorite() {
+    async toggleFavorite() {
+      if (!this.currentUser) {
+        alert('请先登录')
+        return
+      }
+      
       this.isFavorited = !this.isFavorited
+      const newFavorites = this.isFavorited 
+        ? (this.story.favorites || 0) + 1 
+        : Math.max(0, (this.story.favorites || 0) - 1)
+      
+      this.story.favorites = newFavorites
+      
+      // 更新数据库
+      await dbServiceSimple.updateEventStats(this.story.id, { favorites: newFavorites })
     },
     
     scrollToComments() {
@@ -552,14 +600,12 @@ export default {
         return
       }
 
-      // 模拟打开私信界面
-      alert(`正在给 ${this.story.user?.display_name || '匿名用户'} 发送私信...`)
-      
-      // 这里可以扩展为真正的私信功能
-      // this.$emit('open-private-message', {
-      //   recipient: this.story.user,
-      //   story: this.story
-      // })
+      // 发送私信事件给父组件
+      this.$emit('open-private-chat', {
+        id: this.story.user_id,
+        display_name: this.story.user?.display_name || '匿名用户',
+        avatar_url: this.story.user?.avatar_url
+      })
     },
 
     async likeComment(comment) {

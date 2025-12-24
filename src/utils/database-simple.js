@@ -149,6 +149,22 @@ export class DatabaseServiceSimple {
     }
   }
 
+  // 更新事件统计（喜欢、收藏、浏览）
+  async updateEventStats(eventId, stats) {
+    try {
+      const { error } = await supabase
+        .from(TABLES.EVENTS)
+        .update(stats)
+        .eq('id', eventId)
+      
+      if (error) throw error
+      return true
+    } catch (error) {
+      console.error('更新事件统计失败:', error)
+      return false
+    }
+  }
+
   // 删除事件
   async deleteEvent(eventId) {
     try {
@@ -994,6 +1010,164 @@ export class DatabaseServiceSimple {
           schema: 'public',
           table: 'story_comments',
           filter: `story_id=eq.${storyId}`
+        },
+        callback
+      )
+      .subscribe()
+  }
+
+  // ==================== 私信相关方法 ====================
+
+  // 获取用户的私信会话列表
+  async getPrivateConversations(userId) {
+    try {
+      const { data, error } = await supabase
+        .from('private_conversations')
+        .select('*')
+        .or(`user1_id.eq.${userId},user2_id.eq.${userId}`)
+        .order('last_message_at', { ascending: false })
+
+      if (error) {
+        console.log('获取私信会话失败，可能表不存在:', error)
+        return []
+      }
+
+      // 获取对方用户信息
+      const conversations = await Promise.all((data || []).map(async (conv) => {
+        const otherUserId = conv.user1_id === userId ? conv.user2_id : conv.user1_id
+        const otherUser = await this.getUserProfile(otherUserId)
+        
+        // 获取未读消息数
+        const { count } = await supabase
+          .from('private_messages')
+          .select('*', { count: 'exact', head: true })
+          .eq('conversation_id', conv.id)
+          .neq('sender_id', userId)
+          .eq('is_read', false)
+
+        return {
+          ...conv,
+          other_user: otherUser,
+          unread_count: count || 0
+        }
+      }))
+
+      return conversations
+    } catch (error) {
+      console.error('获取私信会话失败:', error)
+      return []
+    }
+  }
+
+  // 创建私信会话
+  async createPrivateConversation(user1Id, user2Id) {
+    try {
+      // 先检查是否已存在会话
+      const { data: existing } = await supabase
+        .from('private_conversations')
+        .select('*')
+        .or(`and(user1_id.eq.${user1Id},user2_id.eq.${user2Id}),and(user1_id.eq.${user2Id},user2_id.eq.${user1Id})`)
+        .maybeSingle()
+
+      if (existing) return existing
+
+      // 创建新会话
+      const { data, error } = await supabase
+        .from('private_conversations')
+        .insert([{
+          user1_id: user1Id,
+          user2_id: user2Id,
+          created_at: new Date().toISOString()
+        }])
+        .select()
+        .single()
+
+      if (error) throw error
+      return data
+    } catch (error) {
+      console.error('创建私信会话失败:', error)
+      return null
+    }
+  }
+
+  // 获取私信消息
+  async getPrivateMessages(conversationId, limit = 100) {
+    try {
+      const { data, error } = await supabase
+        .from('private_messages')
+        .select('*')
+        .eq('conversation_id', conversationId)
+        .order('created_at', { ascending: true })
+        .limit(limit)
+
+      if (error) throw error
+      return data || []
+    } catch (error) {
+      console.error('获取私信消息失败:', error)
+      return []
+    }
+  }
+
+  // 发送私信
+  async sendPrivateMessage(conversationId, senderId, content) {
+    try {
+      const { data, error } = await supabase
+        .from('private_messages')
+        .insert([{
+          conversation_id: conversationId,
+          sender_id: senderId,
+          content: content,
+          created_at: new Date().toISOString()
+        }])
+        .select()
+        .single()
+
+      if (error) throw error
+
+      // 更新会话的最后消息
+      await supabase
+        .from('private_conversations')
+        .update({
+          last_message: content,
+          last_message_at: new Date().toISOString()
+        })
+        .eq('id', conversationId)
+
+      return data
+    } catch (error) {
+      console.error('发送私信失败:', error)
+      return null
+    }
+  }
+
+  // 标记会话已读
+  async markConversationRead(conversationId, userId) {
+    try {
+      const { error } = await supabase
+        .from('private_messages')
+        .update({ is_read: true })
+        .eq('conversation_id', conversationId)
+        .neq('sender_id', userId)
+        .eq('is_read', false)
+
+      if (error) throw error
+      return true
+    } catch (error) {
+      console.error('标记已读失败:', error)
+      return false
+    }
+  }
+
+  // 订阅私信消息
+  subscribeToPrivateMessages(conversationId, callback) {
+    return supabase
+      .channel(`private-${conversationId}`)
+      .on('postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'private_messages',
+          filter: `conversation_id=eq.${conversationId}`
         },
         callback
       )

@@ -193,6 +193,7 @@
         @close="showStoryDetail = false"
         @delete="handleDeleteStory"
         @edit="handleEditStory"
+        @open-private-chat="handleOpenPrivateChat"
         @click.stop
       />
     </div>
@@ -551,7 +552,6 @@ export default {
     
     focusOnEvent(event) {
       if (this.is3DView) {
-        // Cesium组件会自动处理事件聚焦
         console.log(`在3D地球中聚焦到事件: ${event.title}`)
       } else if (this.map) {
         this.map.setView([event.location.lat, event.location.lng], 15)
@@ -561,6 +561,11 @@ export default {
           markerObj.marker.openPopup()
         }
       }
+    },
+    
+    showStoryById(event) {
+      this.selectedStory = event
+      this.showStoryDetail = true
     },
     
     closeModal() {
@@ -928,6 +933,11 @@ export default {
       this.showStoryDetail = false
       // 可以添加编辑逻辑
       console.log('编辑故事:', story)
+    },
+    
+    handleOpenPrivateChat(targetUser) {
+      this.showStoryDetail = false
+      this.$emit('open-private-chat', targetUser)
     }
   }
 }

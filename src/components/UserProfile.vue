@@ -86,14 +86,7 @@
       </div>
     </div>
     
-    <div class="profile-actions">
-      <button @click="$emit('close')" class="close-btn">
-        ✖️ 关闭
-      </button>
-      <button @click="handleLogout" class="logout-btn">
-        🚪 退出登录
-      </button>
-    </div>
+
   </div>
 </template>
 
@@ -253,8 +246,9 @@ export default {
   border-radius: 10px;
   padding: 1.5rem;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-  min-width: 600px;  /* 添加最小宽度 */
-  max-width: 95%;  /* 添加最大宽度 */
+  min-width: 600px;
+  max-width: 95%;
+  overflow-x: hidden;
 }
 
 .profile-header {
@@ -414,44 +408,7 @@ export default {
 
 
 
-/* 操作按钮样式 */
-.profile-actions {
-  display: flex;
-  gap: 0.8rem;
-  margin-top: 1.5rem;
-}
 
-.close-btn {
-  flex: 1;
-  padding: 0.75rem;
-  background: #6c757d;
-  color: white;
-  border: none;
-  border-radius: 5px;
-  cursor: pointer;
-  font-size: 1rem;
-  transition: background 0.3s;
-}
-
-.close-btn:hover {
-  background: #5a6268;
-}
-
-.logout-btn {
-  flex: 1;
-  padding: 0.75rem;
-  background: #ff6b6b;
-  color: white;
-  border: none;
-  border-radius: 5px;
-  cursor: pointer;
-  font-size: 1rem;
-  transition: background 0.3s;
-}
-
-.logout-btn:hover {
-  background: #ff5252;
-}
 
 /* 我的故事样式 */
 .user-stories {
@@ -490,24 +447,12 @@ export default {
 .stories-list {
   max-height: 300px;
   overflow-y: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
 
 .stories-list::-webkit-scrollbar {
-  width: 4px;
-}
-
-.stories-list::-webkit-scrollbar-track {
-  background: #f1f1f1;
-  border-radius: 2px;
-}
-
-.stories-list::-webkit-scrollbar-thumb {
-  background: #c1c1c1;
-  border-radius: 2px;
-}
-
-.stories-list::-webkit-scrollbar-thumb:hover {
-  background: #a8a8a8;
+  display: none;
 }
 
 .story-item {

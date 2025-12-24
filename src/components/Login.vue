@@ -156,17 +156,16 @@ export default {
   display: flex;
   justify-content: center;
   align-items: center;
-  min-height: 100vh;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
 }
 
 .login-form {
   background: white;
-  padding: 2rem;
-  border-radius: 10px;
+  padding: 2.5rem 3rem;
+  border-radius: 12px;
   box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
   width: 100%;
-  max-width: 400px;
+  max-width: 560px;
+  min-width: 480px;
   position: relative;
 }
 
