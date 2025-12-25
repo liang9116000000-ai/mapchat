@@ -413,7 +413,7 @@ export default {
       this.clearAllMarkers()
       this.events.forEach(event => {
         const marker = L.marker([event.location.lat, event.location.lng], {
-          icon: this.createCustomIcon(event.type)
+          icon: this.createCustomIcon(event.type, event)
         })
           .addTo(this.map)
           .on('click', () => {
@@ -506,7 +506,7 @@ export default {
         // 在地图上添加标记
         if (this.map) {
           const marker = L.marker([savedEvent.location.lat, savedEvent.location.lng], {
-            icon: this.createCustomIcon(savedEvent.type)
+            icon: this.createCustomIcon(savedEvent.type, savedEvent)
           })
             .addTo(this.map)
             .on('click', () => {
@@ -654,8 +654,61 @@ export default {
       return pinIcons[type] || pinIcons.other
     },
     
-    createCustomIcon(type) {
-      // 所有事件都使用相同的可爱小女孩图标配置
+    createCustomIcon(type, event) {
+      // 如果故事有图片，只使用图片作为头像，不显示小女孩头像
+      if (event && event.image && event.image.split(',').filter(img => img.trim()).length > 0) {
+        const firstImage = event.image.split(',').filter(img => img.trim())[0]
+        return L.divIcon({
+          html: `
+            <div style="
+              background: white;
+              border: 3px solid #ff69b4;
+              border-radius: 50%;
+              width: 44px;
+              height: 44px;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+              position: relative;
+              animation: bounce 2s infinite;
+              overflow: visible;
+            ">
+              <!-- 故事图片作为头像 -->
+              <img src="${firstImage}" style="
+                width: 100%;
+                height: 100%;
+                object-fit: cover;
+                border-radius: 50%;
+              " />
+              <!-- 指向箭头 -->
+              <div style="
+                position: absolute;
+                bottom: -12px;
+                left: 50%;
+                transform: translateX(-50%);
+                width: 0;
+                height: 0;
+                border-left: 10px solid transparent;
+                border-right: 10px solid transparent;
+                border-top: 14px solid #ff69b4;
+              "></div>
+            </div>
+            <style>
+              @keyframes bounce {
+                0%, 100% { transform: translateY(0); }
+                50% { transform: translateY(-5px); }
+              }
+            </style>
+          `,
+          iconSize: [44, 58],
+          iconAnchor: [22, 58],
+          popupAnchor: [0, -58],
+          className: 'custom-map-pin'
+        })
+      }
+      
+      // 如果没有图片，使用默认的小女孩图标
       const iconConfig = {
         emoji: '👧',
         color: '#ff69b4',
@@ -688,7 +741,7 @@ export default {
               border-left: 10px solid transparent;
               border-right: 10px solid transparent;
               border-top: 14px solid ${iconConfig.color};
-            "></div>
+              "></div>
           </div>
           <style>
             @keyframes bounce {
@@ -800,7 +853,7 @@ export default {
           if (this.map) {
             this.events.forEach(event => {
               const marker = L.marker([event.location.lat, event.location.lng], {
-                icon: this.createCustomIcon(event.type)
+                icon: this.createCustomIcon(event.type, event)
               })
                 .addTo(this.map)
                 .on('click', () => {
@@ -851,7 +904,7 @@ export default {
       
       if (this.map) {
         const marker = L.marker([event.location.lat, event.location.lng], {
-          icon: this.createCustomIcon(event.type)
+          icon: this.createCustomIcon(event.type, event)
         })
           .addTo(this.map)
           .on('click', () => {
